@@ -171,12 +171,33 @@ async function classify(text, test = false) {
 
 /** Shared by all tabs: the server answers one request at a time anyway. */
 const imageLimiter = new Evaluators.ConcurrencyLimiter(Config.IMAGE_MAX_CONCURRENT);
-/** endpoint + topics + picture URL → the model's raw reply (the threshold is applied on every use). */
+/** endpoint + topics + picture address (imageKey) → the model's raw reply (the threshold is applied on every use). */
 const imageCache = new Map();
 /** The same key → Promise of the reply while the picture is being judged: asked by two tiles or tabs, it is one request. */
 const imageRequests = new Map();
 const IMAGE_CACHE_SIZE = 500;
 const IMAGE_FETCH_TIMEOUT_MS = 10000;
+/** A longer picture address is kept in the cache as its SHA-256 digest (a data: URL can be megabytes long). */
+const IMAGE_KEY_MAX_URL = 512;
+
+/** The picture address as a cache key of bounded length. */
+async function imageKey(url) {
+  if (url.length <= IMAGE_KEY_MAX_URL) return url;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(url));
+  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `sha256:${hex}`;
+}
+
+/** Upper bound of the size of the picture inside a data: URL, from the length of the address alone. */
+function dataUrlBytes(url) {
+  const comma = url.indexOf(',');
+  const payload = url.length - comma - 1;
+  return /;\s*base64\s*$/i.test(url.slice(0, Math.max(comma, 0))) ? Math.floor((payload * 3) / 4) : payload;
+}
+
+function imageTooLargeError() {
+  return Evaluators.codedError('imageFetch', `image larger than ${Config.IMAGE_MAX_BYTES} B`);
+}
 
 /**
  * Judges the picture at `url` (http(s) or data:). Errors with the codes imageFetch, imageDecode,
@@ -188,12 +209,14 @@ async function classifyImage(url) {
   try {
     // The content script sends only such addresses; nothing else is ever fetched from here.
     if (!/^(https?:|data:image\/)/i.test(url)) throw Evaluators.codedError('imageFetch', 'unsupported picture address');
+    // An oversized data: picture is refused before it is hashed or decoded.
+    if (/^data:/i.test(url) && dataUrlBytes(url) > Config.IMAGE_MAX_BYTES) throw imageTooLargeError();
     const { aiImagesEndpoint, aiSensitivity, aiTopics } = await Config.load();
     if (!Config.isValidEndpoint(aiImagesEndpoint)) {
       throw Evaluators.codedError('invalidEndpoint', 'invalid image endpoint URL');
     }
     endpoint = Config.resolveEndpoint(aiImagesEndpoint, 'basal');
-    const key = `${endpoint}\n${aiTopics.join(',')}\n${url}`;
+    const key = `${endpoint}\n${aiTopics.join(',')}\n${await imageKey(url)}`;
     let reply = imageCache.get(key);
     if (!reply) {
       let request = imageRequests.get(key);
@@ -239,11 +262,11 @@ async function loadImage(url) {
       signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    blob = await response.blob();
+    blob = await readImageBlob(response);
   } catch (err) {
+    if (err && err.code) throw err;
     throw Evaluators.codedError('imageFetch', `image fetch failed: ${err.message}`);
   }
-  if (blob.size > Config.IMAGE_MAX_BYTES) throw Evaluators.codedError('imageFetch', `image too large: ${blob.size} B`);
 
   let bitmap;
   try {
@@ -266,6 +289,34 @@ async function loadImage(url) {
   } finally {
     bitmap.close();
   }
+}
+
+/**
+ * The response body as a Blob of at most IMAGE_MAX_BYTES. A larger picture is refused on its
+ * Content-Length or, without one, as soon as that many bytes have arrived — the rest is not downloaded.
+ */
+async function readImageBlob(response) {
+  const maxBytes = Config.IMAGE_MAX_BYTES;
+  if (Number(response.headers.get('content-length')) > maxBytes) {
+    if (response.body) response.body.cancel().catch(() => {});
+    throw imageTooLargeError();
+  }
+  const chunks = [];
+  if (response.body) {
+    const reader = response.body.getReader();
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        reader.cancel().catch(() => {});
+        throw imageTooLargeError();
+      }
+      chunks.push(value);
+    }
+  }
+  return new Blob(chunks, { type: response.headers.get('content-type') || '' });
 }
 
 async function encodeCanvas(canvas) {

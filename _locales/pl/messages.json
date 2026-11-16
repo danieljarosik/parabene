@@ -837,6 +837,16 @@
     "message": "Kliknij ponownie, aby wyczyścić",
     "description": "Shown on the clear link after the first click; a second click deletes the log."
   },
+  "logClearFailed": {
+    "message": "Nie udało się wyczyścić dziennika ($error$).",
+    "description": "Shown in place of the log summary when clearing the log failed.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "no response"
+      }
+    }
+  },
   "logSummary": {
     "message": "Słowa kluczowe: $keyword$ · AI (tekst): $aitext$ · AI (grafika): $aiimage$ · pokazane mimo wszystko: $revealed$.",
     "description": "Summary of the log: entries hidden by keywords, by the AI text model, by the AI image model, and how many the user revealed with 'Show anyway'.",

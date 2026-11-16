@@ -377,7 +377,7 @@ Enter its address in the panel (default `http://localhost:8011`; `/v1/basal` is 
 }
 ```
 
-The score, threshold and hidden topics work as for text. `politics` (*polityków, wiec lub wydarzenie polityczne*) is asked when checked; `clickbait` is never asked about a picture. Results are cached per picture address in the service worker (500 entries), so a sensitivity change or a page reload does not ask again, and the same picture in two tiles or tabs is one request. Pictures that cannot be fetched or decoded (or that the server refuses with HTTP 422) are skipped; any other error pauses image evaluation in that tab for 30 s, and the requests time out after 30 s.
+The score, threshold and hidden topics work as for text. `politics` (*polityków, wiec lub wydarzenie polityczne*) is asked when checked; `clickbait` is never asked about a picture. Results are cached per picture address in the service worker (500 entries; an address longer than 512 characters, such as a `data:` picture, is kept as its SHA-256 digest), so a sensitivity change or a page reload does not ask again, and the same picture in two tiles or tabs is one request. Pictures that cannot be fetched or decoded, that are larger than 15 MB (the download stops at that limit) or that the server refuses with HTTP 422 are skipped; any other error pauses image evaluation in that tab for 30 s, and the requests time out after 30 s.
 
 Measured with `Remek/basal-omni-1.0-mini` on 20 photos at the default topics:
 

@@ -66,6 +66,8 @@
   let stats = null;
   let logEntries = [];
   let clearArmedTimer = 0;
+  let logError = '';
+  let logErrorTimer = 0;
   let learnedEntries = [];
   let pendingCount = 0;
   let learnClearArmedTimer = 0;
@@ -423,19 +425,32 @@
     els.logDownload.disabled = total === 0;
     els.logClear.disabled = total === 0;
     if (!clearArmedTimer) els.logClear.textContent = t('logClear');
+    if (logError) {
+      showFeedback(els.logStatus, logError, 'error');
+      return;
+    }
     if (total === 0) {
-      els.logStatus.textContent = t(settings.logEnabled ? 'logEmpty' : 'logOff');
+      showFeedback(els.logStatus, t(settings.logEnabled ? 'logEmpty' : 'logOff'), null);
       return;
     }
     const ai = logEntries.filter((entry) => entry.source === 'ai');
     const aiImage = ai.filter((entry) => entry.media === 'image').length;
     const revealed = logEntries.filter((entry) => entry.revealed).length;
-    els.logStatus.textContent = t('logSummary', [
+    const summary = t('logSummary', [
       i18n.formatNumber(total - ai.length),
       i18n.formatNumber(ai.length - aiImage),
       i18n.formatNumber(aiImage),
       i18n.formatNumber(revealed),
     ]);
+    showFeedback(els.logStatus, summary, null);
+  }
+
+  /** A failed "Clear log" replaces the summary for a few seconds ('' brings the summary back). */
+  function showLogError(text) {
+    clearTimeout(logErrorTimer);
+    logError = text;
+    logErrorTimer = text ? setTimeout(() => showLogError(''), 6000) : 0;
+    renderLog();
   }
 
   /** JSON Lines: a header with the extension version and the settings, then one hidden item per line. */
@@ -488,8 +503,16 @@
     }
     clearTimeout(clearArmedTimer);
     clearArmedTimer = 0;
-    // Through the service worker, which queues it after any log write in progress.
-    await chrome.runtime.sendMessage({ type: Config.MSG.LOG_CLEAR });
+    let failure = '';
+    try {
+      // Through the service worker, which queues it after any log write in progress.
+      const response = await chrome.runtime.sendMessage({ type: Config.MSG.LOG_CLEAR });
+      if (!(response && response.ok)) failure = describeAiError(response && response.error);
+    } catch (err) {
+      failure = t('aiError_unknown', err.message);
+    }
+    // Also puts the button's label back; a cleared log is rendered by the storage change.
+    showLogError(failure ? t('logClearFailed', failure) : '');
   }
 
   /* ---------------- Learning from revealed content ---------------- */
