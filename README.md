@@ -10,7 +10,7 @@ Hidden content does not disappear from the page: it collapses into an unobtrusiv
 so it can be revealed with a single click in case of a false positive.
 
 - Plain JavaScript, HTML and CSS — **no `npm install`, no bundler, no external dependencies**.
-- Everything runs locally. Page text never leaves your computer (the optional AI model runs on `localhost`).
+- Everything runs locally. Page text never leaves your machine or home network (the optional AI model runs on `localhost` or on a server you choose in your LAN).
 - Modular decision engine, ready for plugging in a local AI model (Stage 2).
 
 > The user interface is available in **Polish (default) and English** — switch it with the language picker in the panel's footer. The default keyword list is Polish, as ParaBene targets Polish-language websites.
@@ -48,7 +48,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon). |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
-| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server; the address field and the **Test** (*Testuj*) button check the connection. |
+| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -84,6 +84,7 @@ On first run, a default list of Polish phrases is loaded (accidents, death, viol
 ```
 parabene/
 ├── manifest.json          Manifest V3 (name/description via __MSG_*__, default_locale: pl)
+├── .env.example           template of the local settings file .env (not committed)
 ├── _locales/
 │   ├── pl/messages.json   Polish UI texts (default)
 │   └── en/messages.json   English UI texts
@@ -101,7 +102,8 @@ parabene/
 │   └── popup.js
 └── tools/
     ├── generate_icons.py  icon generator (plain Python, no libraries)
-    └── check_locales.py   translation consistency check (plain Python, no libraries)
+    ├── check_locales.py   translation consistency check (plain Python, no libraries)
+    └── basal_check.py     basal-serve check and reference client (plain Python, no libraries)
 ```
 
 `content.js` deals with the DOM only. Whether to hide a piece of text is decided by an evaluator from `evaluators.js` through a shared contract:
@@ -128,9 +130,26 @@ All settings live in `chrome.storage.local`:
   "keywords": ["wypadek", "śmierć", "..."],
   "aiEnabled": false,
   "aiEndpoint": "http://localhost:8000/classify",
+  "aiProtocol": "simple",
   "language": "pl"
 }
 ```
+
+### Local settings file (`.env`)
+
+To keep your own settings (e.g. the address of a server in your LAN) out of git, copy `.env.example` to `.env` in the extension directory and edit it. `.env` is ignored by git.
+
+```bash
+cp .env.example .env
+```
+
+```ini
+PARABENE_AI_ENABLED=true
+PARABENE_AI_PROTOCOL=basal
+PARABENE_AI_ENDPOINT=http://192.168.1.170:8010
+```
+
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT` and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -243,13 +262,53 @@ curl -s -X POST http://localhost:8000/classify \
 
 Set the endpoint address in the panel (the **Endpoint URL** (*Adres endpointu*) field). The **Test** (*Testuj*) button sends a sample text and shows the server's response.
 
+### basal-serve (`/v1/basal`)
+
+Instead of writing an adapter, pick **basal-serve (/v1/basal)** under **Request format** (*Format zapytań*) and enter the server address, e.g. `http://192.168.1.170:8010` (`/v1/basal` is appended to a bare address; a full route such as `http://192.168.1.170:8010/v1/basal` also works). A 404 from the server shows a hint about the path and the request format. ParaBene then speaks basal's typed-decision API directly (tested with `Remek/basal-2.0-mini-MLX-8bit`). Each container is one request with one `choice` question:
+
+```json
+{
+  "state": "Wypadek na S6 koło Żukowa, dwa auta rozbite, korek na 4 km.",
+  "lang": "pl",
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "Co opisuje tekst?",
+      "option_keys": "hide",
+      "criteria": {
+        "accident": "wypadek, katastrofę lub pożar",
+        "violence": "przemoc, przestępstwo, atak lub wojnę",
+        "death": "śmierć, chorobę lub tragedię osobistą",
+        "none": "coś innego, neutralnego lub pozytywnego"
+      }
+    }
+  }
+}
+```
+
+```json
+{"model": "basal-2.0-mini-MLX-8bit",
+ "answers": {"topic": {"type": "choice", "choice": "accident",
+   "probabilities": {"accident": 0.76, "violence": 0.02, "death": 0.01, "none": 0.21},
+   "confidence": 0.76}},
+ "usage": {"input_tokens": 106, "questions": 1, "latency_ms": 160}}
+```
+
+ParaBene hides the content when `1 − probabilities.none ≥ 0.5` (`BASAL_HIDE_THRESHOLD` in `src/config.js`) and shows the most probable topic in the bar, e.g. *(powód: wypadek, AI)*. The choice form is used because a plain yes/no (`noul`) question ranks texts well but is poorly calibrated on this model (a car crash scored p(true) ≈ 0.3). `max_error` / `abstain` are not used: this model certifies only `choice` at `max_error` 0.05, with a confidence threshold of ≈ 0.97, so nearly every answer abstains.
+
+Warm requests take ~150–300 ms. Check a server and see the raw contract with the bundled script, which also contains a reusable client (`BasalClient`):
+
+```bash
+python3 tools/basal_check.py --url http://192.168.1.170:8010
+```
+
 ---
 
 ## Privacy
 
 - No telemetry, analytics or external servers.
 - Settings are stored only in `chrome.storage.local`.
-- In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default).
+- In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself).
 
 ## Permissions
 

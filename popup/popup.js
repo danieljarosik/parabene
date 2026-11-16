@@ -21,6 +21,7 @@
     restoreDefaults: document.getElementById('restore-defaults'),
     aiEnabled: document.getElementById('ai-enabled'),
     aiSettings: document.getElementById('ai-settings'),
+    aiProtocol: document.getElementById('ai-protocol'),
     aiEndpoint: document.getElementById('ai-endpoint'),
     aiTest: document.getElementById('ai-test'),
     aiStatus: document.getElementById('ai-status'),
@@ -88,6 +89,8 @@
 
     els.aiEnabled.checked = settings.aiEnabled;
     els.aiSettings.classList.toggle('ai--inactive', !settings.aiEnabled);
+    els.aiProtocol.value = settings.aiProtocol;
+    els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol];
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
 
     renderLanguagePicker();
@@ -217,7 +220,7 @@
     const value = els.aiEndpoint.value.trim();
     if (!Config.isValidEndpoint(value)) {
       els.aiEndpoint.classList.add('input--invalid');
-      showFeedback(els.aiStatus, t('aiErrorInvalidUrl', Config.DEFAULT_ENDPOINT), 'error');
+      showFeedback(els.aiStatus, t('aiErrorInvalidUrl', Config.DEFAULT_ENDPOINTS[settings.aiProtocol]), 'error');
       return false;
     }
     els.aiEndpoint.classList.remove('input--invalid');
@@ -226,6 +229,22 @@
       showFeedback(els.aiStatus, t('aiEndpointSaved'), 'ok', 'aiHint');
     }
     return true;
+  }
+
+  /**
+   * Switching the protocol also swaps the endpoint when it is still the other protocol's
+   * default (a custom address is kept).
+   */
+  async function saveProtocol() {
+    const protocol = els.aiProtocol.value;
+    if (!Config.isSupportedProtocol(protocol) || protocol === settings.aiProtocol) return;
+    const update = { aiProtocol: protocol };
+    if (Object.values(Config.DEFAULT_ENDPOINTS).includes(settings.aiEndpoint)) {
+      update.aiEndpoint = Config.DEFAULT_ENDPOINTS[protocol];
+    }
+    els.aiEndpoint.classList.remove('input--invalid');
+    await chrome.storage.local.set(update);
+    showFeedback(els.aiStatus, t('aiProtocolSaved'), 'ok', 'aiHint');
   }
 
   /** Translates a { code, detail } error from the service worker (messages "aiError_<code>"). */
@@ -243,7 +262,9 @@
     try {
       const response = await chrome.runtime.sendMessage({ type: Config.MSG.CLASSIFY, text: t('aiTestText') });
       if (response && response.ok) {
-        const { hide, reason } = response.data;
+        const { hide, category } = response.data;
+        const categoryKey = category ? `category_${category}` : '';
+        const reason = categoryKey && i18n.has(categoryKey) ? t(categoryKey) : response.data.reason;
         const message = reason ? t('aiConnectedWithReason', [hide, reason]) : t('aiConnected', hide);
         showFeedback(els.aiStatus, message, 'ok');
       } else {
@@ -285,6 +306,7 @@
     els.aiEnabled.addEventListener('change', () => {
       chrome.storage.local.set({ aiEnabled: els.aiEnabled.checked });
     });
+    els.aiProtocol.addEventListener('change', saveProtocol);
     els.aiEndpoint.addEventListener('change', saveEndpoint);
     els.aiEndpoint.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {

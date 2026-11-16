@@ -269,6 +269,22 @@
     "message": "Local AI model",
     "description": "Tooltip and accessible name of the local AI switch."
   },
+  "aiProtocolLabel": {
+    "message": "Request format",
+    "description": "Label of the AI request format (protocol) picker."
+  },
+  "aiProtocol_simple": {
+    "message": "Simple: {\"text\"} → {\"hide\", \"reason\"}",
+    "description": "Option of the protocol picker: ParaBene's own simple JSON contract."
+  },
+  "aiProtocol_basal": {
+    "message": "basal-serve (/v1/basal)",
+    "description": "Option of the protocol picker: the basal-serve typed-decision API (a product name, normally not translated)."
+  },
+  "aiProtocolSaved": {
+    "message": "Request format saved.",
+    "description": "Confirmation after changing the request format."
+  },
   "aiEndpointLabel": {
     "message": "Endpoint URL",
     "description": "Label of the endpoint URL input."
@@ -373,6 +389,16 @@
       }
     }
   },
+  "aiError_notFound": {
+    "message": "HTTP 404: the server has no route $path$. For basal-serve, pick the “basal-serve” format and enter just the server address, e.g. http://192.168.1.170:8010",
+    "description": "Connection error: the endpoint answered 404 (wrong path or wrong request format).",
+    "placeholders": {
+      "path": {
+        "content": "$1",
+        "example": "/classify"
+      }
+    }
+  },
   "aiError_unknown": {
     "message": "$details$",
     "description": "Connection error with a raw technical message.",
@@ -426,5 +452,17 @@
   "category_profanity": {
     "message": "profanity",
     "description": "Category name shown instead of the matched profane word."
+  },
+  "category_accident": {
+    "message": "accident",
+    "description": "Category name: the AI model found an accident, disaster or fire."
+  },
+  "category_violence": {
+    "message": "violence",
+    "description": "Category name: the AI model found violence, crime, an attack or war."
+  },
+  "category_death": {
+    "message": "death or tragedy",
+    "description": "Category name: the AI model found death, illness or a personal tragedy."
   }
 }

@@ -123,17 +123,17 @@
   }
 
   /**
-   * HTTP transport: POST {"text": "..."} → {"hide": boolean, "reason": "..."}.
+   * HTTP transport: POSTs `body` (by default {"text": "..."}) as JSON and returns the parsed JSON reply.
    * Used by the service worker (bypasses page CORS and Private Network Access).
    */
-  async function fetchTransport({ endpoint, text, timeoutMs }) {
+  async function fetchTransport({ endpoint, text, timeoutMs, body }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(body === undefined ? { text } : body),
         signal: controller.signal,
         credentials: 'omit',
         cache: 'no-store',
@@ -153,6 +153,61 @@
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * basal-serve protocol (POST /v1/basal, basal typed-decision models).
+   *
+   * One "choice" question over the text; the option keys are hidden from the model
+   * (option_keys: "hide"), so the Polish descriptions alone define the options. Every
+   * key but "none" is a topic ParaBene hides, and also the category id shown in the bar.
+   * (A plain yes/no "noul" question ranks texts well but is poorly calibrated: a car
+   * crash scored p(true) ≈ 0.3, so the choice form is used.)
+   *
+   * Reply: {"answers": {"topic": {"type": "choice", "choice": "accident",
+   *         "probabilities": {"accident": 0.79, ..., "none": 0.21}, "confidence": 0.79}}, "usage": {...}}
+   */
+  const BASAL_QUESTION = 'topic';
+  const BASAL_NONE = 'none';
+  const BASAL_TOPICS = Object.freeze({
+    accident: 'wypadek, katastrofę lub pożar',
+    violence: 'przemoc, przestępstwo, atak lub wojnę',
+    death: 'śmierć, chorobę lub tragedię osobistą',
+    [BASAL_NONE]: 'coś innego, neutralnego lub pozytywnego',
+  });
+
+  function basalRequest(text) {
+    return {
+      state: String(text || ''),
+      lang: 'pl',
+      questions: {
+        [BASAL_QUESTION]: {
+          type: 'choice',
+          instructions: 'Co opisuje tekst?',
+          criteria: BASAL_TOPICS,
+          option_keys: 'hide',
+        },
+      },
+    };
+  }
+
+  /**
+   * basal reply → {hide, reason, category}: hide when 1 − p(none) reaches `threshold`;
+   * the category is the most probable hidden topic. Throws `invalidResponse` otherwise.
+   */
+  function parseBasalResponse(data, threshold = 0.5) {
+    const answer = data && data.answers && data.answers[BASAL_QUESTION];
+    const probs = answer && answer.probabilities;
+    if (!probs || typeof probs !== 'object' || typeof probs[BASAL_NONE] !== 'number') {
+      throw codedError('invalidResponse', 'invalid basal response (expected answers.topic.probabilities)');
+    }
+    let category = '';
+    for (const key of Object.keys(BASAL_TOPICS)) {
+      if (key === BASAL_NONE || typeof probs[key] !== 'number') continue;
+      if (!category || probs[key] > probs[category]) category = key;
+    }
+    const hide = 1 - probs[BASAL_NONE] >= threshold && Boolean(category);
+    return { hide, reason: '', category: hide ? category : '' };
   }
 
   /**
@@ -207,7 +262,8 @@
       }
       // An empty reason is rendered by the UI as a generic "AI model verdict".
       const reason = typeof data.reason === 'string' ? data.reason.trim().slice(0, 80) : '';
-      const result = makeResult(data.hide, data.hide ? reason : '', 'ai');
+      const category = typeof data.category === 'string' && /^[a-z]+$/.test(data.category) ? data.category : '';
+      const result = makeResult(data.hide, data.hide ? reason : '', 'ai', data.hide ? category : '');
 
       this.cache.set(input, result);
       if (this.cache.size > this.cacheSize) this.cache.delete(this.cache.keys().next().value);
@@ -265,6 +321,8 @@
     FallbackEvaluator,
     codedError,
     fetchTransport,
+    basalRequest,
+    parseBasalResponse,
     createRuntimeTransport,
     createEvaluator,
   });

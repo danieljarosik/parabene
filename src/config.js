@@ -8,6 +8,24 @@
   const DEFAULT_ENDPOINT = 'http://localhost:8000/classify';
 
   /**
+   * Request formats the AI evaluator can speak:
+   * - simple: POST {"text"} → {"hide", "reason"} (README, "Local AI endpoint contract"),
+   * - basal:  basal-serve's typed-decision API (POST /v1/basal, see src/evaluators.js).
+   */
+  const AI_PROTOCOLS = Object.freeze(['simple', 'basal']);
+  const DEFAULT_PROTOCOL = 'simple';
+  const DEFAULT_ENDPOINTS = Object.freeze({
+    simple: DEFAULT_ENDPOINT,
+    basal: 'http://localhost:8000',
+  });
+
+  /** basal-serve's decision route, appended when the endpoint is a bare server address. */
+  const BASAL_PATH = '/v1/basal';
+
+  /** basal: hide when the probability that the text is about one of the hidden topics reaches this value. */
+  const BASAL_HIDE_THRESHOLD = 0.5;
+
+  /**
    * UI languages. Each code must have a matching _locales/<code>/messages.json.
    * Names are endonyms (each language in its own name), as is the convention
    * for language pickers.
@@ -77,6 +95,7 @@
     keywords: DEFAULT_KEYWORDS,
     aiEnabled: false,
     aiEndpoint: DEFAULT_ENDPOINT,
+    aiProtocol: DEFAULT_PROTOCOL,
     language: DEFAULT_LANGUAGE,
   });
 
@@ -121,6 +140,81 @@
     }
   }
 
+  function isSupportedProtocol(value) {
+    return AI_PROTOCOLS.includes(value);
+  }
+
+  /**
+   * The URL a request actually goes to: for basal a bare server address
+   * (http://host:port or http://host:port/) gets BASAL_PATH; any other path is kept.
+   */
+  function resolveEndpoint(endpoint, protocol) {
+    if (protocol !== 'basal') return endpoint;
+    try {
+      const url = new URL(String(endpoint));
+      if (url.pathname === '/' || url.pathname === '') {
+        url.pathname = BASAL_PATH;
+        return url.toString();
+      }
+    } catch (_) {
+      /* invalid URLs are reported by isValidEndpoint */
+    }
+    return endpoint;
+  }
+
+  /**
+   * Local, uncommitted settings file (.env in the extension directory, see .env.example).
+   * Applied by the service worker on every install / reload of the extension.
+   */
+  const ENV_FILE = '.env';
+  const ENV_KEYS = Object.freeze({
+    PARABENE_ENABLED: 'enabled',
+    PARABENE_AI_ENABLED: 'aiEnabled',
+    PARABENE_AI_PROTOCOL: 'aiProtocol',
+    PARABENE_AI_ENDPOINT: 'aiEndpoint',
+    PARABENE_LANGUAGE: 'language',
+  });
+  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled']);
+
+  /**
+   * .env text (KEY=VALUE lines, # comments, optional quotes) → partial settings.
+   * Unknown keys and invalid values are skipped and listed in `ignored`.
+   */
+  function parseEnv(text) {
+    const settings = {};
+    const ignored = [];
+    for (const rawLine of String(text || '').split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+      if (!match) {
+        ignored.push(line);
+        continue;
+      }
+      const name = match[1];
+      let value = match[2].trim();
+      if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1);
+      else value = value.replace(/\s+#.*$/, '');
+      const key = ENV_KEYS[name];
+      if (!key) {
+        ignored.push(name);
+      } else if (BOOLEAN_SETTINGS.has(key)) {
+        if (/^(true|1|yes|on)$/i.test(value)) settings[key] = true;
+        else if (/^(false|0|no|off)$/i.test(value)) settings[key] = false;
+        else ignored.push(name);
+      } else if (key === 'aiProtocol' && !isSupportedProtocol(value)) {
+        ignored.push(name);
+      } else if (key === 'aiEndpoint' && !isValidEndpoint(value)) {
+        ignored.push(name);
+      } else if (key === 'language' && !isSupportedLanguage(value)) {
+        ignored.push(name);
+      } else {
+        settings[key] = value;
+      }
+    }
+    return { settings, ignored };
+  }
+
   function isSupportedLanguage(value) {
     return typeof value === 'string' && Object.prototype.hasOwnProperty.call(UI_LANGUAGES, value);
   }
@@ -133,6 +227,7 @@
       keywords: uniqueKeywords(Array.isArray(s.keywords) ? s.keywords : DEFAULT_KEYWORDS),
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
+      aiProtocol: isSupportedProtocol(s.aiProtocol) ? s.aiProtocol : DEFAULT_PROTOCOL,
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
     };
   }
@@ -166,6 +261,13 @@
 
   root.ParaBeneConfig = Object.freeze({
     DEFAULT_ENDPOINT,
+    AI_PROTOCOLS,
+    DEFAULT_PROTOCOL,
+    DEFAULT_ENDPOINTS,
+    BASAL_PATH,
+    BASAL_HIDE_THRESHOLD,
+    ENV_FILE,
+    ENV_KEYS,
     UI_LANGUAGES,
     DEFAULT_LANGUAGE,
     DEFAULT_KEYWORDS,
@@ -179,7 +281,10 @@
     normalizeKeyword,
     uniqueKeywords,
     isValidEndpoint,
+    isSupportedProtocol,
     isSupportedLanguage,
+    resolveEndpoint,
+    parseEnv,
     sanitize,
     load,
     categories,

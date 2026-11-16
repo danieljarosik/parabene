@@ -23,7 +23,8 @@
 ## Stack
 Chrome extension, Manifest V3. Plain JavaScript, HTML and CSS with no external dependencies;
 tooling scripts are plain Python 3 (standard library only). Settings live in
-`chrome.storage.local`. The optional AI evaluator talks only to a local endpoint (`localhost`).
+`chrome.storage.local`. The optional AI evaluator talks only to the user-configured local endpoint
+(`localhost` by default, or the user's own LAN server, e.g. basal-serve).
 
 ## Project structure
 See the *Architecture* section of `README.md`. Short version: `manifest.json`,
