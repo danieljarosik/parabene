@@ -2,7 +2,9 @@
  * ParaBene – decision engine.
  *
  * Every evaluator implements `async evaluate(text)` and returns:
- *   { hide: boolean, reason: string, source: "keyword" | "ai" }
+ *   { hide: boolean, reason: string, source: "keyword" | "ai", category?: string }
+ * `reason` is raw data (a matched phrase or the model's own text); `category`
+ * is a language-neutral id. Turning them into UI text is up to the caller.
  *
  * content.js knows only this contract, so the evaluation strategy
  * (keywords, local AI model, fallback chain) can be swapped without
@@ -11,15 +13,25 @@
 (function (root) {
   'use strict';
 
-  function makeResult(hide, reason, source) {
-    return { hide: Boolean(hide), reason: String(reason || ''), source };
+  function makeResult(hide, reason, source, category) {
+    const result = { hide: Boolean(hide), reason: String(reason || ''), source };
+    if (category) result.category = category;
+    return result;
+  }
+
+  /** Error with a language-neutral `code` (and optional `detail`) for the UI to translate. */
+  function codedError(code, message, detail) {
+    const err = new Error(message);
+    err.code = code;
+    if (detail !== undefined) err.detail = detail;
+    return err;
   }
 
   /** Base interface for content evaluation strategies. */
   class ContentEvaluator {
     /**
      * @param {string} text
-     * @returns {Promise<{hide: boolean, reason: string, source: string}>}
+     * @returns {Promise<{hide: boolean, reason: string, source: string, category?: string}>}
      */
     async evaluate(text) {
       throw new Error(`${this.constructor.name}.evaluate(text) must be implemented by a subclass.`);
@@ -48,6 +60,7 @@
     /**
      * @param {string[]} keywords
      * @param {{categories?: Map<string,string>|Object<string,string>}} [options]
+     *        phrase → category id; a match on such a phrase reports the category
      */
     constructor(keywords, options = {}) {
       super();
@@ -55,14 +68,16 @@
         ? options.categories
         : new Map(Object.entries(options.categories || {}));
 
-      this.labels = new Map();
+      this.categories = new Map();
+      const unique = new Set();
       for (const raw of keywords || []) {
         const keyword = normalize(raw);
-        if (!keyword || this.labels.has(keyword)) continue;
-        this.labels.set(keyword, categories.get(keyword) || keyword);
+        if (!keyword || unique.has(keyword)) continue;
+        unique.add(keyword);
+        if (categories.has(keyword)) this.categories.set(keyword, categories.get(keyword));
       }
 
-      const alternatives = [...this.labels.keys()]
+      const alternatives = [...unique]
         .sort((a, b) => b.length - a.length)
         .map((keyword) => escapeRegExp(keyword).replace(/ /g, '\\s+'));
 
@@ -80,7 +95,7 @@
       const match = this.regex.exec(String(text).normalize('NFC'));
       if (!match) return makeResult(false, '', 'keyword');
       const matched = normalize(match[1]);
-      return makeResult(true, this.labels.get(matched) || matched, 'keyword');
+      return makeResult(true, matched, 'keyword', this.categories.get(matched));
     }
   }
 
@@ -123,10 +138,17 @@
         credentials: 'omit',
         cache: 'no-store',
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
+      if (!response.ok) throw codedError('http', `HTTP ${response.status}`, String(response.status));
+      try {
+        return await response.json();
+      } catch (_) {
+        throw codedError('invalidResponse', 'response is not valid JSON');
+      }
     } catch (err) {
-      if (err && err.name === 'AbortError') throw new Error(`przekroczono limit czasu ${timeoutMs} ms`);
+      if (err && err.name === 'AbortError') {
+        throw codedError('timeout', `timed out after ${timeoutMs} ms`, String(timeoutMs));
+      }
+      if (err && !err.code && err.name === 'TypeError') throw codedError('unreachable', err.message);
       throw err;
     } finally {
       clearTimeout(timer);
@@ -141,7 +163,8 @@
     return async function runtimeTransport({ text }) {
       const response = await chrome.runtime.sendMessage({ type: messageType, text });
       if (!response || !response.ok) {
-        throw new Error((response && response.error) || 'no response from service worker');
+        const error = (response && response.error) || { code: 'noResponse' };
+        throw codedError(error.code, error.detail ? `${error.code}: ${error.detail}` : error.code, error.detail);
       }
       return response.data;
     };
@@ -180,11 +203,10 @@
         this.transport({ endpoint: this.endpoint, text: input, timeoutMs: this.timeoutMs })
       );
       if (!data || typeof data.hide !== 'boolean') {
-        throw new Error('invalid model response (expected {"hide": boolean, "reason": string})');
+        throw codedError('invalidResponse', 'invalid model response (expected {"hide": boolean, "reason": string})');
       }
-      const reason = typeof data.reason === 'string' && data.reason.trim()
-        ? data.reason.trim().slice(0, 80)
-        : 'ocena modelu AI';
+      // An empty reason is rendered by the UI as a generic "AI model verdict".
+      const reason = typeof data.reason === 'string' ? data.reason.trim().slice(0, 80) : '';
       const result = makeResult(data.hide, data.hide ? reason : '', 'ai');
 
       this.cache.set(input, result);
@@ -241,6 +263,7 @@
     KeywordEvaluator,
     LocalAIEvaluator,
     FallbackEvaluator,
+    codedError,
     fetchTransport,
     createRuntimeTransport,
     createEvaluator,

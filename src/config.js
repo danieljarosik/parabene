@@ -7,7 +7,18 @@
 
   const DEFAULT_ENDPOINT = 'http://localhost:8000/classify';
 
-  /** Profanity stems — shown in the placeholder bar under the "wulgaryzm" (profanity) category. */
+  /**
+   * UI languages. Each code must have a matching _locales/<code>/messages.json.
+   * Names are endonyms (each language in its own name), as is the convention
+   * for language pickers.
+   */
+  const UI_LANGUAGES = Object.freeze({
+    pl: 'Polski',
+    en: 'English',
+  });
+  const DEFAULT_LANGUAGE = 'pl';
+
+  /** Profanity stems — shown in the placeholder bar under the "profanity" category. */
   const PROFANITY = Object.freeze([
     'kurw',
     'skurw',
@@ -66,12 +77,14 @@
     keywords: DEFAULT_KEYWORDS,
     aiEnabled: false,
     aiEndpoint: DEFAULT_ENDPOINT,
+    language: DEFAULT_LANGUAGE,
   });
 
   const MSG = Object.freeze({
     CLASSIFY: 'parabene:classify',
     STATS: 'parabene:stats',
     GET_STATS: 'parabene:getStats',
+    GET_MESSAGES: 'parabene:getMessages',
   });
 
   const AI_TIMEOUT_MS = 4000;
@@ -108,6 +121,10 @@
     }
   }
 
+  function isSupportedLanguage(value) {
+    return typeof value === 'string' && Object.prototype.hasOwnProperty.call(UI_LANGUAGES, value);
+  }
+
   function sanitize(raw) {
     const s = Object.assign({}, DEFAULT_SETTINGS, raw || {});
     const endpoint = typeof s.aiEndpoint === 'string' ? s.aiEndpoint.trim() : '';
@@ -116,6 +133,7 @@
       keywords: uniqueKeywords(Array.isArray(s.keywords) ? s.keywords : DEFAULT_KEYWORDS),
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
+      language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
     };
   }
 
@@ -136,15 +154,20 @@
     return sanitize(Object.assign({}, stored, missing));
   }
 
-  /** Map of phrase → category displayed as the reason for hiding. */
+  /**
+   * Map of phrase → category id. The id (not the phrase) is shown as the reason
+   * for hiding, translated via the "category_<id>" message.
+   */
   function categories() {
     const map = new Map();
-    for (const word of PROFANITY) map.set(normalizeKeyword(word), 'wulgaryzm');
+    for (const word of PROFANITY) map.set(normalizeKeyword(word), 'profanity');
     return map;
   }
 
   root.ParaBeneConfig = Object.freeze({
     DEFAULT_ENDPOINT,
+    UI_LANGUAGES,
+    DEFAULT_LANGUAGE,
     DEFAULT_KEYWORDS,
     DEFAULT_SETTINGS,
     PROFANITY,
@@ -156,6 +179,7 @@
     normalizeKeyword,
     uniqueKeywords,
     isValidEndpoint,
+    isSupportedLanguage,
     sanitize,
     load,
     categories,

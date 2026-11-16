@@ -1,0 +1,430 @@
+{
+  "extName": {
+    "message": "ParaBene – Positive Web & News Filter",
+    "description": "Extension name shown in the Chrome Web Store and chrome://extensions. Max 75 characters."
+  },
+  "extShortName": {
+    "message": "ParaBene",
+    "description": "Short extension name. Max 12 characters."
+  },
+  "extDescription": {
+    "message": "Hides profanity, accidents, violence and negative sensationalism on news portals and social media.",
+    "description": "Extension description in the Chrome Web Store. Max 132 characters."
+  },
+  "actionTitle": {
+    "message": "ParaBene",
+    "description": "Tooltip of the toolbar icon."
+  },
+  "appTagline": {
+    "message": "Positive Web & News Filter",
+    "description": "Subtitle under the product name in the popup header."
+  },
+  "filterToggleTitle": {
+    "message": "Turn the filter on or off",
+    "description": "Tooltip of the main on/off switch."
+  },
+  "filterToggleLabel": {
+    "message": "ParaBene filter",
+    "description": "Accessible name of the main on/off switch."
+  },
+  "stateOn": {
+    "message": "ON",
+    "description": "Short label next to the main switch when the filter is on."
+  },
+  "stateOff": {
+    "message": "OFF",
+    "description": "Short label next to the main switch when the filter is off."
+  },
+  "statTitle": {
+    "message": "Hidden on this page",
+    "description": "Heading of the counter of hidden items on the current page."
+  },
+  "statChecking": {
+    "message": "Checking the current tab…",
+    "description": "Shown while the popup queries the current tab."
+  },
+  "statOff": {
+    "message": "The filter is turned off.",
+    "description": "Shown when the filter is turned off."
+  },
+  "statUnreachable": {
+    "message": "The filter does not run on this page, or the page needs to be reloaded.",
+    "description": "Shown when the content script does not run on the current page."
+  },
+  "statActive": {
+    "message": "Posts and articles collapsed by the filter.",
+    "description": "Explains the counter of hidden items."
+  },
+  "loadError": {
+    "message": "Could not load the settings.",
+    "description": "Shown when settings could not be loaded."
+  },
+  "keywordsTitle": {
+    "message": "Keywords",
+    "description": "Heading of the keyword list card."
+  },
+  "keywordPlaceholder": {
+    "message": "e.g. wypadek, katastrof",
+    "description": "Placeholder of the new keyword input. The examples are Polish keywords on purpose (the filter targets Polish sites)."
+  },
+  "keywordInputLabel": {
+    "message": "New keyword",
+    "description": "Accessible name of the new keyword input."
+  },
+  "keywordAdd": {
+    "message": "Add",
+    "description": "Button that adds keywords."
+  },
+  "keywordHint": {
+    "message": "Enter a word stem to cover all inflected forms (e.g. “tragedi” → tragedia, tragedii). Separate multiple phrases with commas.",
+    "description": "Help text under the keyword input."
+  },
+  "keywordListLabel": {
+    "message": "Active phrases",
+    "description": "Accessible name of the list of active keywords."
+  },
+  "keywordEmpty": {
+    "message": "The list is empty — nothing will be hidden.",
+    "description": "Shown when the keyword list is empty."
+  },
+  "restoreDefaults": {
+    "message": "Restore default phrases",
+    "description": "Link that restores the default keywords."
+  },
+  "removeKeywordTitle": {
+    "message": "Remove",
+    "description": "Tooltip of the × button on a keyword chip."
+  },
+  "removeKeywordLabel": {
+    "message": "Remove “$keyword$”",
+    "description": "Accessible name of the × button on a keyword chip.",
+    "placeholders": {
+      "keyword": {
+        "content": "$1",
+        "example": "wypadek"
+      }
+    }
+  },
+  "keywordErrorEmpty": {
+    "message": "Enter a word or phrase.",
+    "description": "Validation error: nothing was typed."
+  },
+  "keywordErrorLength": {
+    "message": "A phrase must be $min$ to $max$ characters long.",
+    "description": "Validation error: phrase too short or too long.",
+    "placeholders": {
+      "min": {
+        "content": "$1",
+        "example": "3"
+      },
+      "max": {
+        "content": "$2",
+        "example": "80"
+      }
+    }
+  },
+  "keywordErrorDuplicate": {
+    "message": "This phrase is already on the list.",
+    "description": "Validation error: the phrase is already on the list."
+  },
+  "keywordAddedOne": {
+    "message": "Added “$keyword$”.",
+    "description": "Confirmation after adding a single phrase.",
+    "placeholders": {
+      "keyword": {
+        "content": "$1",
+        "example": "wypadek"
+      }
+    }
+  },
+  "keywordsAdded_one": {
+    "message": "Added $count$ phrase.",
+    "description": "Confirmation after adding phrases (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "keywordsAdded_few": {
+    "message": "Added $count$ phrases.",
+    "description": "Confirmation after adding phrases (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "keywordsAdded_many": {
+    "message": "Added $count$ phrases.",
+    "description": "Confirmation after adding phrases (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsAdded_other": {
+    "message": "Added $count$ phrases.",
+    "description": "Confirmation after adding phrases (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsSkipped": {
+    "message": "Skipped as too short/long: $count$.",
+    "description": "Appended to the confirmation when some phrases were rejected.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "keywordRemoved": {
+    "message": "Removed “$keyword$”.",
+    "description": "Confirmation after removing a phrase.",
+    "placeholders": {
+      "keyword": {
+        "content": "$1",
+        "example": "wypadek"
+      }
+    }
+  },
+  "defaultsAllPresent": {
+    "message": "All default phrases are already on the list.",
+    "description": "Shown when all default phrases are already on the list."
+  },
+  "defaultsRestored_one": {
+    "message": "Restored $count$ phrase from the default list.",
+    "description": "Confirmation after restoring default phrases (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "defaultsRestored_few": {
+    "message": "Restored $count$ phrases from the default list.",
+    "description": "Confirmation after restoring default phrases (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "defaultsRestored_many": {
+    "message": "Restored $count$ phrases from the default list.",
+    "description": "Confirmation after restoring default phrases (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "defaultsRestored_other": {
+    "message": "Restored $count$ phrases from the default list.",
+    "description": "Confirmation after restoring default phrases (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "engineTitle": {
+    "message": "Evaluation engine",
+    "description": "Heading of the evaluation engine card."
+  },
+  "engineKeywordsName": {
+    "message": "Keywords",
+    "description": "Name of the keyword engine."
+  },
+  "engineKeywordsDesc": {
+    "message": "Always on — also used as a fallback for the AI model.",
+    "description": "Description of the keyword engine."
+  },
+  "engineActive": {
+    "message": "active",
+    "description": "Badge showing that an engine is active."
+  },
+  "engineAiName": {
+    "message": "Local AI model (localhost)",
+    "description": "Name of the local AI engine."
+  },
+  "engineAiDesc": {
+    "message": "Sends text only to your own local server.",
+    "description": "Description of the local AI engine."
+  },
+  "engineAiToggleLabel": {
+    "message": "Local AI model",
+    "description": "Tooltip and accessible name of the local AI switch."
+  },
+  "aiEndpointLabel": {
+    "message": "Endpoint URL",
+    "description": "Label of the endpoint URL input."
+  },
+  "aiTest": {
+    "message": "Test",
+    "description": "Button that tests the connection to the local model."
+  },
+  "aiHint": {
+    "message": "When the model does not respond, ParaBene automatically falls back to keywords.",
+    "description": "Help text under the endpoint input."
+  },
+  "aiErrorInvalidUrl": {
+    "message": "Enter a full http(s):// URL, e.g. $example$",
+    "description": "Validation error for the endpoint URL.",
+    "placeholders": {
+      "example": {
+        "content": "$1",
+        "example": "http://localhost:8000/classify"
+      }
+    }
+  },
+  "aiEndpointSaved": {
+    "message": "Endpoint URL saved.",
+    "description": "Confirmation after saving the endpoint URL."
+  },
+  "aiConnecting": {
+    "message": "Connecting to the local model…",
+    "description": "Shown while testing the connection."
+  },
+  "aiTestText": {
+    "message": "ParaBene: local model connection test.",
+    "description": "Sample text sent to the local model when testing the connection."
+  },
+  "aiConnected": {
+    "message": "Connected ✓ Response: hide=$hide$.",
+    "description": "Connection test succeeded.",
+    "placeholders": {
+      "hide": {
+        "content": "$1",
+        "example": "false"
+      }
+    }
+  },
+  "aiConnectedWithReason": {
+    "message": "Connected ✓ Response: hide=$hide$, reason: “$reason$”.",
+    "description": "Connection test succeeded and the model returned a reason.",
+    "placeholders": {
+      "hide": {
+        "content": "$1",
+        "example": "true"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "violence"
+      }
+    }
+  },
+  "aiConnectionFailed": {
+    "message": "No connection ($error$). Falling back to keywords.",
+    "description": "Connection test failed; the placeholder is one of the aiError_* messages.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "server is not responding"
+      }
+    }
+  },
+  "aiError_noResponse": {
+    "message": "no response",
+    "description": "Connection error: the service worker did not answer."
+  },
+  "aiError_invalidEndpoint": {
+    "message": "invalid endpoint URL",
+    "description": "Connection error: invalid endpoint URL."
+  },
+  "aiError_invalidResponse": {
+    "message": "invalid response (expected {\"hide\": boolean, \"reason\": string})",
+    "description": "Connection error: the model returned malformed JSON."
+  },
+  "aiError_timeout": {
+    "message": "timed out after $ms$ ms",
+    "description": "Connection error: request timed out.",
+    "placeholders": {
+      "ms": {
+        "content": "$1",
+        "example": "4000"
+      }
+    }
+  },
+  "aiError_unreachable": {
+    "message": "server is not responding",
+    "description": "Connection error: the server cannot be reached."
+  },
+  "aiError_http": {
+    "message": "HTTP $status$",
+    "description": "Connection error: HTTP error status.",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "500"
+      }
+    }
+  },
+  "aiError_unknown": {
+    "message": "$details$",
+    "description": "Connection error with a raw technical message.",
+    "placeholders": {
+      "details": {
+        "content": "$1",
+        "example": "TypeError"
+      }
+    }
+  },
+  "languageLabel": {
+    "message": "Interface language",
+    "description": "Label of the UI language picker."
+  },
+  "barText": {
+    "message": "ParaBene hid this content",
+    "description": "Text of the bar that replaces hidden content on web pages."
+  },
+  "barReason": {
+    "message": "(reason: $reason$)",
+    "description": "Reason for hiding, shown in the bar.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "wypadek"
+      }
+    }
+  },
+  "barReasonAi": {
+    "message": "(reason: $reason$, AI)",
+    "description": "Reason for hiding given by the local AI model, shown in the bar.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "violence"
+      }
+    }
+  },
+  "barReveal": {
+    "message": "Show anyway",
+    "description": "Button in the bar that reveals hidden content."
+  },
+  "reasonUnknown": {
+    "message": "unwanted content",
+    "description": "Fallback reason when none is available."
+  },
+  "reasonAiDefault": {
+    "message": "AI model verdict",
+    "description": "Reason used when the AI model hides content without giving a reason."
+  },
+  "category_profanity": {
+    "message": "profanity",
+    "description": "Category name shown instead of the matched profane word."
+  }
+}

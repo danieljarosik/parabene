@@ -12,13 +12,16 @@
   globalThis.__parabeneContentLoaded = true;
 
   const Config = globalThis.ParaBeneConfig;
+  const I18n = globalThis.ParaBeneI18n;
   const Evaluators = globalThis.ParaBeneEvaluators;
-  if (!Config || !Evaluators || !document.documentElement) return;
+  if (!Config || !I18n || !Evaluators || !document.documentElement) return;
 
   const ATTR_CHECKED = 'data-parabene-checked';
   const ATTR_CANDIDATE = 'data-parabene-candidate';
   const ATTR_REVEALED = 'data-parabene-revealed';
   const ATTR_REASON = 'data-parabene-reason';
+  const ATTR_SOURCE = 'data-parabene-source';
+  const ATTR_CATEGORY = 'data-parabene-category';
   const CLASS_HIDDEN = 'parabene-hidden';
   const CLASS_BAR = 'parabene-bar';
 
@@ -64,6 +67,8 @@
   const state = {
     enabled: false,
     settings: null,
+    i18n: null,
+    languageSeq: 0,
     evaluator: null,
     generation: 0,
     observer: null,
@@ -243,9 +248,22 @@
   /* Hiding and restoring                                                */
   /* ------------------------------------------------------------------ */
 
+  /** Builds the localized "(reason: …)" text from a language-neutral evaluator result. */
   function formatReason(result) {
-    const reason = result.reason || 'niechciana treść';
-    return result.source === 'ai' ? `${reason}, AI` : reason;
+    const { t, has } = state.i18n;
+    const categoryKey = result.category ? `category_${result.category}` : '';
+    let reason = categoryKey && has(categoryKey) ? t(categoryKey) : result.reason;
+    if (!reason) reason = t(result.source === 'ai' ? 'reasonAiDefault' : 'reasonUnknown');
+    return t(result.source === 'ai' ? 'barReasonAi' : 'barReason', reason);
+  }
+
+  /** Reads back the raw result stored on a hidden container. */
+  function storedResult(el) {
+    return {
+      reason: el.getAttribute(ATTR_REASON) || '',
+      source: el.getAttribute(ATTR_SOURCE) || 'keyword',
+      category: el.getAttribute(ATTR_CATEGORY) || undefined,
+    };
   }
 
   function directBar(el) {
@@ -266,15 +284,15 @@
 
     const label = document.createElement('span');
     label.className = 'parabene-bar__text';
-    label.append('ParaBene ukryło treść ');
+    const message = document.createElement('span');
+    message.className = 'parabene-bar__message';
     const reason = document.createElement('span');
     reason.className = 'parabene-bar__reason';
-    label.append(reason);
+    label.append(message, ' ', reason);
 
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'parabene-bar__btn';
-    button.textContent = 'Pokaż mimo wszystko';
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -292,15 +310,31 @@
     return bar;
   }
 
+  /** Writes all bar texts in the current UI language (also used after a language switch). */
+  function labelBar(bar, result) {
+    const { t, locale } = state.i18n;
+    // The bar is injected into foreign pages — declare its language for screen readers.
+    bar.lang = locale;
+    bar.querySelector('.parabene-bar__message').textContent = t('barText');
+    bar.querySelector('.parabene-bar__reason').textContent = formatReason(result);
+    bar.querySelector('.parabene-bar__btn').textContent = t('barReveal');
+  }
+
+  function setOrRemoveAttribute(el, name, value) {
+    if (value) el.setAttribute(name, value);
+    else el.removeAttribute(name);
+  }
+
   function hide(el, result) {
-    const reason = formatReason(result);
     let bar = directBar(el);
     if (!bar) {
       bar = createBar(el);
       el.insertBefore(bar, el.firstChild);
     }
-    bar.querySelector('.parabene-bar__reason').textContent = `(powód: ${reason})`;
-    el.setAttribute(ATTR_REASON, reason);
+    labelBar(bar, result);
+    el.setAttribute(ATTR_REASON, result.reason || '');
+    el.setAttribute(ATTR_SOURCE, result.source || 'keyword');
+    setOrRemoveAttribute(el, ATTR_CATEGORY, result.category);
     if (!el.classList.contains(CLASS_HIDDEN)) {
       el.classList.add(CLASS_HIDDEN);
       state.hiddenCount += 1;
@@ -312,6 +346,8 @@
     const bar = directBar(el);
     if (bar) bar.remove();
     el.removeAttribute(ATTR_REASON);
+    el.removeAttribute(ATTR_SOURCE);
+    el.removeAttribute(ATTR_CATEGORY);
     if (el.classList.contains(CLASS_HIDDEN)) {
       el.classList.remove(CLASS_HIDDEN);
       state.hiddenCount = Math.max(0, state.hiddenCount - 1);
@@ -328,7 +364,14 @@
   function repairBar(node) {
     const hidden = node.closest(`.${CLASS_HIDDEN}`);
     if (hidden && !directBar(hidden)) {
-      hide(hidden, { reason: hidden.getAttribute(ATTR_REASON) || '', source: 'keyword' });
+      hide(hidden, storedResult(hidden));
+    }
+  }
+
+  function relabelAll() {
+    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) {
+      const bar = directBar(el);
+      if (bar) labelBar(bar, storedResult(el));
     }
   }
 
@@ -463,8 +506,33 @@
     });
   }
 
+  /**
+   * Content scripts cannot fetch extension files, so translations come from the
+   * service worker. If that fails, the translator falls back to chrome.i18n.
+   */
+  async function loadTranslator(locale) {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: Config.MSG.GET_MESSAGES, locale });
+      if (response && response.ok) return I18n.createTranslator(response.locale, response.messages);
+      console.warn('[ParaBene] Failed to load translations:', response && response.error);
+    } catch (err) {
+      console.warn('[ParaBene] Failed to load translations:', err);
+    }
+    return I18n.createTranslator(locale, null);
+  }
+
+  async function updateLanguage(locale) {
+    const seq = ++state.languageSeq;
+    const translator = await loadTranslator(locale);
+    if (seq !== state.languageSeq || !state.alive) return;
+    state.i18n = translator;
+    relabelAll();
+  }
+
   function applySettings(settings) {
+    const previous = state.settings;
     state.settings = settings;
+    if (previous && previous.language !== settings.language) updateLanguage(settings.language);
     state.evaluator = buildEvaluator(settings);
     if (!settings.enabled) {
       state.enabled = false;
@@ -535,10 +603,21 @@
       const value = changes[key].newValue;
       next[key] = value === undefined ? Config.DEFAULT_SETTINGS[key] : value;
     }
-    applySettings(Config.sanitize(next));
+    const sanitized = Config.sanitize(next);
+    if (keys.length === 1 && keys[0] === 'language') {
+      // A UI language switch only changes the bar texts — no need to re-scan the page.
+      const changed = sanitized.language !== state.settings.language;
+      state.settings = sanitized;
+      if (changed) updateLanguage(sanitized.language);
+      return;
+    }
+    applySettings(sanitized);
   });
 
   Config.load()
-    .then(applySettings)
+    .then(async (settings) => {
+      state.i18n = await loadTranslator(settings.language);
+      applySettings(settings);
+    })
     .catch((err) => console.warn('[ParaBene] Failed to load settings:', err));
 })();

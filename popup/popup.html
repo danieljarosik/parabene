@@ -1,5 +1,10 @@
 <!doctype html>
-<html lang="pl">
+<!--
+  UI texts come from _locales/<lang>/messages.json (see src/i18n.js):
+  a data-i18n attribute sets textContent, data-i18n-<attr> sets that attribute.
+  The page stays invisible until the texts are applied (no flash of untranslated UI).
+-->
+<html lang="pl" class="i18n-pending">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -12,26 +17,26 @@
         <img class="header__logo" src="../icons/icon48.png" alt="" width="36" height="36" />
         <div class="header__titles">
           <h1>ParaBene</h1>
-          <p>Positive Web &amp; News Filter</p>
+          <p data-i18n="appTagline"></p>
         </div>
-        <label class="switch switch--main" title="Włącz lub wyłącz filtr">
-          <input type="checkbox" id="enabled" role="switch" aria-label="Filtr ParaBene" />
+        <label class="switch switch--main" data-i18n-title="filterToggleTitle">
+          <input type="checkbox" id="enabled" role="switch" data-i18n-aria-label="filterToggleLabel" />
           <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          <span class="switch__state" id="enabled-state">ON</span>
+          <span class="switch__state" id="enabled-state"></span>
         </label>
       </header>
 
       <section class="card stat" aria-live="polite">
         <div class="stat__number" id="hidden-count">–</div>
         <div class="stat__text">
-          <strong>Ukryte na tej stronie</strong>
-          <span id="stat-hint">Sprawdzam bieżącą kartę…</span>
+          <strong data-i18n="statTitle"></strong>
+          <span id="stat-hint" data-i18n="statChecking"></span>
         </div>
       </section>
 
       <section class="card">
         <div class="card__head">
-          <h2>Słowa kluczowe</h2>
+          <h2 data-i18n="keywordsTitle"></h2>
           <span class="count" id="keyword-count">0</span>
         </div>
         <form class="row" id="keyword-form" autocomplete="off">
@@ -39,46 +44,44 @@
             type="text"
             id="keyword-input"
             class="input"
-            placeholder="np. wypadek, katastrof"
             maxlength="400"
-            aria-label="Nowe słowo kluczowe"
+            data-i18n-placeholder="keywordPlaceholder"
+            data-i18n-aria-label="keywordInputLabel"
           />
-          <button type="submit" class="btn btn--primary">Dodaj</button>
+          <button type="submit" class="btn btn--primary" data-i18n="keywordAdd"></button>
         </form>
-        <p class="hint" id="keyword-feedback">
-          Wpisz rdzeń słowa, aby objąć odmiany (np. „tragedi” → tragedia, tragedii). Kilka fraz oddziel przecinkami.
-        </p>
-        <ul class="chips" id="keyword-list" aria-label="Aktywne frazy"></ul>
-        <p class="empty" id="keyword-empty" hidden>Lista jest pusta — nic nie zostanie ukryte.</p>
-        <button type="button" class="link" id="restore-defaults">Przywróć domyślne frazy</button>
+        <p class="hint" id="keyword-feedback" data-i18n="keywordHint"></p>
+        <ul class="chips" id="keyword-list" data-i18n-aria-label="keywordListLabel"></ul>
+        <p class="empty" id="keyword-empty" data-i18n="keywordEmpty" hidden></p>
+        <button type="button" class="link" id="restore-defaults" data-i18n="restoreDefaults"></button>
       </section>
 
       <section class="card">
         <div class="card__head">
-          <h2>Silnik oceny</h2>
+          <h2 data-i18n="engineTitle"></h2>
         </div>
 
         <div class="engine engine--on">
           <div class="engine__text">
-            <strong>Słowa kluczowe</strong>
-            <span>Zawsze aktywne — także jako zapas dla modelu AI.</span>
+            <strong data-i18n="engineKeywordsName"></strong>
+            <span data-i18n="engineKeywordsDesc"></span>
           </div>
-          <span class="pill">aktywny</span>
+          <span class="pill" data-i18n="engineActive"></span>
         </div>
 
         <div class="engine">
           <div class="engine__text">
-            <strong>Lokalny model AI (localhost)</strong>
-            <span>Wysyła tekst wyłącznie na Twój lokalny serwer.</span>
+            <strong data-i18n="engineAiName"></strong>
+            <span data-i18n="engineAiDesc"></span>
           </div>
-          <label class="switch" title="Lokalny model AI">
-            <input type="checkbox" id="ai-enabled" role="switch" aria-label="Lokalny model AI" />
+          <label class="switch" data-i18n-title="engineAiToggleLabel">
+            <input type="checkbox" id="ai-enabled" role="switch" data-i18n-aria-label="engineAiToggleLabel" />
             <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
           </label>
         </div>
 
         <div class="ai" id="ai-settings">
-          <label class="ai__label" for="ai-endpoint">Adres endpointu</label>
+          <label class="ai__label" for="ai-endpoint" data-i18n="aiEndpointLabel"></label>
           <div class="row">
             <input
               type="url"
@@ -87,19 +90,28 @@
               spellcheck="false"
               placeholder="http://localhost:8000/classify"
             />
-            <button type="button" class="btn" id="ai-test">Testuj</button>
+            <button type="button" class="btn" id="ai-test" data-i18n="aiTest"></button>
           </div>
-          <p class="hint" id="ai-status">Gdy model nie odpowiada, ParaBene automatycznie używa słów kluczowych.</p>
+          <p class="hint" id="ai-status" data-i18n="aiHint"></p>
         </div>
       </section>
 
       <footer class="footer">
         <span id="version">v1.0.0</span>
+        <label class="lang">
+          <span class="visually-hidden" data-i18n="languageLabel"></span>
+          <svg class="lang__icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+            <path d="M1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13" fill="none" stroke="currentColor" stroke-width="1.3" />
+          </svg>
+          <select id="language" class="lang__select"></select>
+        </label>
         <a href="https://github.com/danieljarosik/parabene" target="_blank" rel="noopener noreferrer">GitHub</a>
       </footer>
     </main>
 
     <script src="../src/config.js"></script>
+    <script src="../src/i18n.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

@@ -3,7 +3,7 @@
   'use strict';
 
   const Config = globalThis.ParaBeneConfig;
-  const collator = new Intl.Collator('pl', { sensitivity: 'base' });
+  const I18n = globalThis.ParaBeneI18n;
   const profanity = new Set(Config.PROFANITY.map(Config.normalizeKeyword));
 
   const els = {
@@ -25,10 +25,8 @@
     aiTest: document.getElementById('ai-test'),
     aiStatus: document.getElementById('ai-status'),
     version: document.getElementById('version'),
+    language: document.getElementById('language'),
   };
-
-  const defaultKeywordHint = els.keywordFeedback.textContent.trim();
-  const defaultAiHint = els.aiStatus.textContent.trim();
 
   let settings = Config.sanitize({});
   let activeTabId = null;
@@ -36,17 +34,63 @@
   let feedbackTimer = 0;
   let recentlyAdded = new Set();
 
+  /* ---------------- Internationalisation ---------------- */
+
+  let i18n = I18n.createTranslator(Config.DEFAULT_LANGUAGE, null);
+  let collator = new Intl.Collator(i18n.locale, { sensitivity: 'base' });
+  let languageSeq = 0;
+  const t = (key, substitutions) => i18n.t(key, substitutions);
+  const plural = (key, count, substitutions) => i18n.plural(key, count, substitutions);
+
+  async function loadMessagesSafe(locale) {
+    try {
+      return await I18n.loadMessages(locale);
+    } catch (err) {
+      console.warn('[ParaBene]', err);
+      return null;
+    }
+  }
+
+  /** Loads the chosen language (with the default language as fallback) and re-renders the UI. */
+  async function applyLanguage(locale) {
+    const seq = ++languageSeq;
+    const [messages, fallback] = await Promise.all([
+      loadMessagesSafe(locale),
+      locale === Config.DEFAULT_LANGUAGE ? null : loadMessagesSafe(Config.DEFAULT_LANGUAGE),
+    ]);
+    if (seq !== languageSeq) return;
+
+    i18n = I18n.createTranslator(locale, messages, fallback);
+    collator = new Intl.Collator(locale, { sensitivity: 'base' });
+    clearTimeout(feedbackTimer);
+    for (const hint of [els.keywordFeedback, els.aiStatus]) hint.classList.remove('hint--ok', 'hint--error');
+    I18n.localize(document, i18n);
+    render();
+  }
+
+  function renderLanguagePicker() {
+    if (els.language.options.length === 0) {
+      for (const [code, name] of Object.entries(Config.UI_LANGUAGES)) {
+        const option = new Option(name, code);
+        option.lang = code; // endonym — announce it in its own language
+        els.language.add(option);
+      }
+    }
+    els.language.value = settings.language;
+  }
+
   /* ---------------- Render ---------------- */
 
   function render() {
     els.enabled.checked = settings.enabled;
-    els.enabledState.textContent = settings.enabled ? 'ON' : 'OFF';
+    els.enabledState.textContent = t(settings.enabled ? 'stateOn' : 'stateOff');
     els.app.classList.toggle('app--off', !settings.enabled);
 
     els.aiEnabled.checked = settings.aiEnabled;
     els.aiSettings.classList.toggle('ai--inactive', !settings.aiEnabled);
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
 
+    renderLanguagePicker();
     renderKeywords();
     renderStatHint();
   }
@@ -67,8 +111,8 @@
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.textContent = '×';
-      remove.title = 'Usuń';
-      remove.setAttribute('aria-label', `Usuń „${keyword}”`);
+      remove.title = t('removeKeywordTitle');
+      remove.setAttribute('aria-label', t('removeKeywordLabel', keyword));
       remove.addEventListener('click', () => removeKeyword(keyword));
 
       item.append(label, remove);
@@ -82,37 +126,30 @@
 
   function renderStatHint() {
     if (!settings.enabled) {
-      els.statHint.textContent = 'Filtr jest wyłączony.';
+      els.statHint.textContent = t('statOff');
     } else if (!tabReachable) {
-      els.statHint.textContent = 'Filtr nie działa na tej stronie lub wymaga jej odświeżenia.';
+      els.statHint.textContent = t('statUnreachable');
     } else {
-      els.statHint.textContent = 'Posty i artykuły zwinięte przez filtr.';
+      els.statHint.textContent = t('statActive');
     }
   }
 
   function setCount(value) {
-    els.hiddenCount.textContent = Number.isFinite(value) ? String(value) : '–';
+    els.hiddenCount.textContent = Number.isFinite(value) ? i18n.formatNumber(value) : '–';
   }
 
-  function showFeedback(element, text, kind, fallbackText) {
+  /** Shows a message; with `fallbackKey` it reverts to that (translated) hint after a moment. */
+  function showFeedback(element, text, kind, fallbackKey) {
     element.textContent = text;
     element.classList.toggle('hint--ok', kind === 'ok');
     element.classList.toggle('hint--error', kind === 'error');
-    if (fallbackText) {
+    if (fallbackKey) {
       clearTimeout(feedbackTimer);
-      feedbackTimer = setTimeout(() => showFeedback(element, fallbackText, null), 3500);
+      feedbackTimer = setTimeout(() => showFeedback(element, t(fallbackKey), null), 3500);
     }
   }
 
   /* ---------------- Keywords ---------------- */
-
-  function phrases(count) {
-    const mod10 = count % 10;
-    const mod100 = count % 100;
-    if (count === 1) return '1 frazę';
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} frazy`;
-    return `${count} fraz`;
-  }
 
   function parseKeywords(raw) {
     return raw
@@ -125,7 +162,7 @@
     event.preventDefault();
     const candidates = parseKeywords(els.keywordInput.value);
     if (candidates.length === 0) {
-      showFeedback(els.keywordFeedback, 'Wpisz słowo lub frazę.', 'error', defaultKeywordHint);
+      showFeedback(els.keywordFeedback, t('keywordErrorEmpty'), 'error', 'keywordHint');
       return;
     }
 
@@ -143,35 +180,35 @@
 
     if (added.length === 0) {
       const message = rejected.length
-        ? `Fraza musi mieć od ${Config.KEYWORD_MIN_LENGTH} do ${Config.KEYWORD_MAX_LENGTH} znaków.`
-        : 'Ta fraza jest już na liście.';
-      showFeedback(els.keywordFeedback, message, 'error', defaultKeywordHint);
+        ? t('keywordErrorLength', [Config.KEYWORD_MIN_LENGTH, Config.KEYWORD_MAX_LENGTH])
+        : t('keywordErrorDuplicate');
+      showFeedback(els.keywordFeedback, message, 'error', 'keywordHint');
       return;
     }
 
     recentlyAdded = new Set(added);
     await chrome.storage.local.set({ keywords: [...settings.keywords, ...added] });
     els.keywordInput.value = '';
-    const suffix = rejected.length ? ` Pominięto za krótkie/długie: ${rejected.length}.` : '';
-    const message = added.length === 1 ? `Dodano „${added[0]}”.${suffix}` : `Dodano ${phrases(added.length)}.${suffix}`;
-    showFeedback(els.keywordFeedback, message, 'ok', defaultKeywordHint);
+    const sentences = [added.length === 1 ? t('keywordAddedOne', added[0]) : plural('keywordsAdded', added.length)];
+    if (rejected.length) sentences.push(t('keywordsSkipped', i18n.formatNumber(rejected.length)));
+    showFeedback(els.keywordFeedback, sentences.join(' '), 'ok', 'keywordHint');
   }
 
   async function removeKeyword(keyword) {
     await chrome.storage.local.set({ keywords: settings.keywords.filter((k) => k !== keyword) });
-    showFeedback(els.keywordFeedback, `Usunięto „${keyword}”.`, 'ok', defaultKeywordHint);
+    showFeedback(els.keywordFeedback, t('keywordRemoved', keyword), 'ok', 'keywordHint');
   }
 
   async function restoreDefaults() {
     const existing = new Set(settings.keywords);
     const missing = Config.DEFAULT_KEYWORDS.map(Config.normalizeKeyword).filter((k) => !existing.has(k));
     if (missing.length === 0) {
-      showFeedback(els.keywordFeedback, 'Wszystkie domyślne frazy są już na liście.', 'ok', defaultKeywordHint);
+      showFeedback(els.keywordFeedback, t('defaultsAllPresent'), 'ok', 'keywordHint');
       return;
     }
     recentlyAdded = new Set(missing);
     await chrome.storage.local.set({ keywords: [...settings.keywords, ...missing] });
-    showFeedback(els.keywordFeedback, `Przywrócono ${phrases(missing.length)} z listy domyślnej.`, 'ok', defaultKeywordHint);
+    showFeedback(els.keywordFeedback, plural('defaultsRestored', missing.length), 'ok', 'keywordHint');
   }
 
   /* ---------------- Local AI model ---------------- */
@@ -180,35 +217,41 @@
     const value = els.aiEndpoint.value.trim();
     if (!Config.isValidEndpoint(value)) {
       els.aiEndpoint.classList.add('input--invalid');
-      showFeedback(els.aiStatus, 'Podaj pełny adres http(s)://, np. http://localhost:8000/classify', 'error');
+      showFeedback(els.aiStatus, t('aiErrorInvalidUrl', Config.DEFAULT_ENDPOINT), 'error');
       return false;
     }
     els.aiEndpoint.classList.remove('input--invalid');
     if (value !== settings.aiEndpoint) {
       await chrome.storage.local.set({ aiEndpoint: value });
-      showFeedback(els.aiStatus, 'Zapisano adres endpointu.', 'ok', defaultAiHint);
+      showFeedback(els.aiStatus, t('aiEndpointSaved'), 'ok', 'aiHint');
     }
     return true;
+  }
+
+  /** Translates a { code, detail } error from the service worker (messages "aiError_<code>"). */
+  function describeAiError(error) {
+    if (!error) return t('aiError_noResponse');
+    const key = `aiError_${error.code}`;
+    if (!i18n.has(key)) return t('aiError_unknown', error.detail || error.code || '?');
+    return t(key, error.detail == null ? [] : error.detail);
   }
 
   async function testEndpoint() {
     if (!(await saveEndpoint())) return;
     els.aiTest.disabled = true;
-    showFeedback(els.aiStatus, 'Łączenie z lokalnym modelem…', null);
+    showFeedback(els.aiStatus, t('aiConnecting'), null);
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: Config.MSG.CLASSIFY,
-        text: 'ParaBene: test połączenia z lokalnym modelem.',
-      });
+      const response = await chrome.runtime.sendMessage({ type: Config.MSG.CLASSIFY, text: t('aiTestText') });
       if (response && response.ok) {
-        const reason = response.data.reason ? `, powód: „${response.data.reason}”` : '';
-        showFeedback(els.aiStatus, `Połączono ✓ Odpowiedź: hide=${response.data.hide}${reason}.`, 'ok');
+        const { hide, reason } = response.data;
+        const message = reason ? t('aiConnectedWithReason', [hide, reason]) : t('aiConnected', hide);
+        showFeedback(els.aiStatus, message, 'ok');
       } else {
-        const error = (response && response.error) || 'brak odpowiedzi';
-        showFeedback(els.aiStatus, `Brak połączenia (${error}). Działa zapas: słowa kluczowe.`, 'error');
+        showFeedback(els.aiStatus, t('aiConnectionFailed', describeAiError(response && response.error)), 'error');
       }
     } catch (err) {
-      showFeedback(els.aiStatus, `Brak połączenia (${err.message}). Działa zapas: słowa kluczowe.`, 'error');
+      const error = t('aiError_unknown', err.message);
+      showFeedback(els.aiStatus, t('aiConnectionFailed', error), 'error');
     } finally {
       els.aiTest.disabled = false;
     }
@@ -251,6 +294,11 @@
     });
     els.aiEndpoint.addEventListener('input', () => els.aiEndpoint.classList.remove('input--invalid'));
     els.aiTest.addEventListener('click', testEndpoint);
+    els.language.addEventListener('change', () => {
+      if (Config.isSupportedLanguage(els.language.value)) {
+        chrome.storage.local.set({ language: els.language.value });
+      }
+    });
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
@@ -258,8 +306,13 @@
       if (keys.length === 0) return;
       const next = Object.assign({}, settings);
       for (const key of keys) next[key] = changes[key].newValue;
+      const previousLanguage = settings.language;
       settings = Config.sanitize(next);
-      render();
+      if (settings.language !== previousLanguage) {
+        applyLanguage(settings.language).catch((err) => console.error('[ParaBene]', err));
+      } else {
+        render();
+      }
       if (keys.includes('enabled')) setTimeout(refreshStats, 400);
     });
 
@@ -278,12 +331,15 @@
     els.version.textContent = `v${chrome.runtime.getManifest().version}`;
     bind();
     settings = await Config.load();
-    render();
+    await applyLanguage(settings.language);
+    document.documentElement.classList.remove('i18n-pending');
     await refreshStats();
   }
 
   init().catch((err) => {
     console.error('[ParaBene]', err);
-    els.statHint.textContent = 'Nie udało się wczytać ustawień.';
+    I18n.localize(document, i18n);
+    els.statHint.textContent = t('loadError');
+    document.documentElement.classList.remove('i18n-pending');
   });
 })();
