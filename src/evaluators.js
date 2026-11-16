@@ -160,9 +160,15 @@
    *
    * One "choice" question over the text; the option keys are hidden from the model
    * (option_keys: "hide"), so the Polish descriptions alone define the options. Every
-   * key but "none" is a topic ParaBene hides, and also the category id shown in the bar.
+   * key but "none" is a topic, and also the category id shown in the bar.
    * (A plain yes/no "noul" question ranks texts well but is poorly calibrated: a car
    * crash scored p(true) ≈ 0.3, so the choice form is used.)
+   *
+   * The core topics are always asked, even when the user does not hide them: with only one
+   * or two options the model is pushed into them (asked about politics alone, a profane rant
+   * scored p(politics) ≈ 0.8). Extra topics are asked only when selected, because they draw
+   * probability from the core ones (with "clickbait" present a flood scored only 0.24).
+   * The hide score is the summed probability of the selected topics.
    *
    * Reply: {"answers": {"topic": {"type": "choice", "choice": "accident",
    *         "probabilities": {"accident": 0.79, ..., "none": 0.21}, "confidence": 0.79}}, "usage": {...}}
@@ -170,13 +176,26 @@
   const BASAL_QUESTION = 'topic';
   const BASAL_NONE = 'none';
   const BASAL_TOPICS = Object.freeze({
-    accident: 'wypadek, katastrofę lub pożar',
+    accident: 'wypadek, katastrofę, pożar lub klęskę żywiołową',
     violence: 'przemoc, przestępstwo, atak lub wojnę',
     death: 'śmierć, chorobę lub tragedię osobistą',
-    [BASAL_NONE]: 'coś innego, neutralnego lub pozytywnego',
+    profanity: 'wulgaryzmy lub obelgi',
+    politics: 'politykę, polityków lub spory polityczne',
+    clickbait: 'sensację, szokujący nagłówek lub clickbait',
   });
+  const BASAL_NONE_TEXT = 'coś innego, neutralnego lub pozytywnego';
+  const BASAL_CORE_TOPICS = Object.freeze(['accident', 'violence', 'death', 'profanity']);
+  const BASAL_DEFAULT_TOPICS = BASAL_CORE_TOPICS;
 
-  function basalRequest(text) {
+  /** Topics put to the model: the core ones plus the selected extras, in BASAL_TOPICS order. */
+  function basalAskedTopics(selected = BASAL_DEFAULT_TOPICS) {
+    return Object.keys(BASAL_TOPICS).filter((key) => BASAL_CORE_TOPICS.includes(key) || selected.includes(key));
+  }
+
+  function basalRequest(text, selected = BASAL_DEFAULT_TOPICS) {
+    const criteria = {};
+    for (const key of basalAskedTopics(selected)) criteria[key] = BASAL_TOPICS[key];
+    criteria[BASAL_NONE] = BASAL_NONE_TEXT;
     return {
       state: String(text || ''),
       lang: 'pl',
@@ -184,7 +203,7 @@
         [BASAL_QUESTION]: {
           type: 'choice',
           instructions: 'Co opisuje tekst?',
-          criteria: BASAL_TOPICS,
+          criteria,
           option_keys: 'hide',
         },
       },
@@ -192,22 +211,26 @@
   }
 
   /**
-   * basal reply → {hide, reason, category}: hide when 1 − p(none) reaches `threshold`;
-   * the category is the most probable hidden topic. Throws `invalidResponse` otherwise.
+   * basal reply → {hide, reason, category, score}: score = summed probability of the selected
+   * topics, hide when it reaches `threshold`; the category is the most probable selected topic.
+   * Throws `invalidResponse` when the reply has no probabilities.
    */
-  function parseBasalResponse(data, threshold = 0.5) {
+  function parseBasalResponse(data, { threshold = 0.5, topics = BASAL_DEFAULT_TOPICS } = {}) {
     const answer = data && data.answers && data.answers[BASAL_QUESTION];
     const probs = answer && answer.probabilities;
     if (!probs || typeof probs !== 'object' || typeof probs[BASAL_NONE] !== 'number') {
       throw codedError('invalidResponse', 'invalid basal response (expected answers.topic.probabilities)');
     }
+    let score = 0;
     let category = '';
-    for (const key of Object.keys(BASAL_TOPICS)) {
-      if (key === BASAL_NONE || typeof probs[key] !== 'number') continue;
+    for (const key of topics) {
+      if (typeof probs[key] !== 'number') continue;
+      score += probs[key];
       if (!category || probs[key] > probs[category]) category = key;
     }
-    const hide = 1 - probs[BASAL_NONE] >= threshold && Boolean(category);
-    return { hide, reason: '', category: hide ? category : '' };
+    score = Math.round(Math.min(1, score) * 100) / 100;
+    const hide = Boolean(category) && score >= threshold;
+    return { hide, reason: '', category: hide ? category : '', score };
   }
 
   /**
@@ -299,8 +322,30 @@
   }
 
   /**
+   * Asks the evaluators in order and returns the first verdict that hides the text
+   * (later evaluators are not asked); otherwise the last evaluator's verdict.
+   */
+  class FirstHitEvaluator extends ContentEvaluator {
+    constructor(evaluators) {
+      super();
+      this.evaluators = evaluators;
+    }
+
+    async evaluate(text) {
+      let result = makeResult(false, '', 'keyword');
+      for (const evaluator of this.evaluators) {
+        result = await evaluator.evaluate(text);
+        if (result.hide) return result;
+      }
+      return result;
+    }
+  }
+
+  /**
    * Builds an evaluator from the settings stored in chrome.storage.local.
-   * @param {{keywords: string[], aiEnabled: boolean, aiEndpoint: string}} settings
+   * @param {{keywords: string[], aiEnabled: boolean, aiEndpoint: string, aiMode?: string}} settings
+   *        aiMode "both" (default): keywords first, then the model; "ai": the model alone,
+   *        keywords only as a fallback while it is unavailable.
    */
   function createEvaluator(settings, options = {}) {
     const keyword = new KeywordEvaluator(settings.keywords, { categories: options.categories });
@@ -311,7 +356,8 @@
       timeoutMs: options.timeoutMs,
       maxChars: options.maxChars,
     });
-    return new FallbackEvaluator(ai, keyword, { onError: options.onError });
+    const withFallback = new FallbackEvaluator(ai, keyword, { onError: options.onError });
+    return settings.aiMode === 'ai' ? withFallback : new FirstHitEvaluator([keyword, withFallback]);
   }
 
   root.ParaBeneEvaluators = Object.freeze({
@@ -319,8 +365,12 @@
     KeywordEvaluator,
     LocalAIEvaluator,
     FallbackEvaluator,
+    FirstHitEvaluator,
     codedError,
     fetchTransport,
+    BASAL_TOPICS,
+    BASAL_CORE_TOPICS,
+    basalAskedTopics,
     basalRequest,
     parseBasalResponse,
     createRuntimeTransport,

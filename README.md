@@ -48,7 +48,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon). |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
-| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. |
+| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -121,6 +121,12 @@ Evaluators are language-neutral: `reason` is raw data (the matched phrase or the
 | `KeywordEvaluator` | Fast local keyword matching (a single compiled regular expression with the `u` flag). |
 | `LocalAIEvaluator` | Sends a `POST` to the local endpoint. Limits concurrent requests (3), caches results and caps text length (2000 characters). |
 | `FallbackEvaluator` | Tries the AI model. On error (no server, timeout, invalid response) it falls back to `KeywordEvaluator` and skips the failing server for 30 s. |
+| `FirstHitEvaluator` | Asks evaluators in order and stops at the first one that hides the text. Used by the default *Keywords + AI* mode: a keyword match hides at once, without a request to the model. |
+
+**Keywords and AI model** (`aiMode`):
+
+- `both` (default, *Frazy + AI*) — your keywords still work with the model on: a match hides the text at once; everything else goes to the model. Profanity and your own phrases are never missed because the model was not asked about them.
+- `ai` (*Tylko AI*) — the model decides alone; keywords are used only while the server is unavailable.
 
 All settings live in `chrome.storage.local`:
 
@@ -131,6 +137,9 @@ All settings live in `chrome.storage.local`:
   "aiEnabled": false,
   "aiEndpoint": "http://localhost:8000/classify",
   "aiProtocol": "simple",
+  "aiMode": "both",
+  "aiSensitivity": "medium",
+  "aiTopics": ["accident", "violence", "death", "profanity"],
   "language": "pl"
 }
 ```
@@ -147,9 +156,11 @@ cp .env.example .env
 PARABENE_AI_ENABLED=true
 PARABENE_AI_PROTOCOL=basal
 PARABENE_AI_ENDPOINT=http://192.168.1.170:8010
+PARABENE_AI_SENSITIVITY=medium
+PARABENE_AI_TOPICS=accident,violence,death,profanity,politics
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT` and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -276,9 +287,10 @@ Instead of writing an adapter, pick **basal-serve (/v1/basal)** under **Request 
       "instructions": "Co opisuje tekst?",
       "option_keys": "hide",
       "criteria": {
-        "accident": "wypadek, katastrofę lub pożar",
+        "accident": "wypadek, katastrofę, pożar lub klęskę żywiołową",
         "violence": "przemoc, przestępstwo, atak lub wojnę",
         "death": "śmierć, chorobę lub tragedię osobistą",
+        "profanity": "wulgaryzmy lub obelgi",
         "none": "coś innego, neutralnego lub pozytywnego"
       }
     }
@@ -289,12 +301,25 @@ Instead of writing an adapter, pick **basal-serve (/v1/basal)** under **Request 
 ```json
 {"model": "basal-2.0-mini-MLX-8bit",
  "answers": {"topic": {"type": "choice", "choice": "accident",
-   "probabilities": {"accident": 0.76, "violence": 0.02, "death": 0.01, "none": 0.21},
-   "confidence": 0.76}},
- "usage": {"input_tokens": 106, "questions": 1, "latency_ms": 160}}
+   "probabilities": {"accident": 0.57, "violence": 0.02, "death": 0.01, "profanity": 0.01, "none": 0.39},
+   "confidence": 0.57}},
+ "usage": {"input_tokens": 112, "questions": 1, "latency_ms": 160}}
 ```
 
-ParaBene hides the content when `1 − probabilities.none ≥ 0.5` (`BASAL_HIDE_THRESHOLD` in `src/config.js`) and shows the most probable topic in the bar, e.g. *(powód: wypadek, AI)*. The choice form is used because a plain yes/no (`noul`) question ranks texts well but is poorly calibrated on this model (a car crash scored p(true) ≈ 0.3). `max_error` / `abstain` are not used: this model certifies only `choice` at `max_error` 0.05, with a confidence threshold of ≈ 0.97, so nearly every answer abstains.
+**Hidden topics** (`aiTopics`) pick which topics count; the bar shows the most probable selected topic, e.g. *(powód: wypadek, AI)*.
+
+| Topic id | Panel label | Description sent to the model | Default |
+| --- | --- | --- | --- |
+| `accident` | *wypadek* (accident) | wypadek, katastrofę, pożar lub klęskę żywiołową | ✓ |
+| `violence` | *przemoc* (violence) | przemoc, przestępstwo, atak lub wojnę | ✓ |
+| `death` | *śmierć lub tragedia* (death or tragedy) | śmierć, chorobę lub tragedię osobistą | ✓ |
+| `profanity` | *wulgaryzm* (profanity) | wulgaryzmy lub obelgi | ✓ |
+| `politics` | *polityka* (politics) | politykę, polityków lub spory polityczne | |
+| `clickbait` | *sensacja / clickbait* (sensationalism / clickbait) | sensację, szokujący nagłówek lub clickbait | |
+
+The four default topics are always part of the question, even when unchecked: with only one or two options the model gets pushed into them (asked about politics alone, a profane rant scored p(politics) ≈ 0.8). `politics` and `clickbait` are added only when checked, as they draw probability away from the others (with `clickbait` present, a flood report scored only 0.24 for the disaster topics).
+
+The **hide score** is the summed probability of the checked topics. **Sensitivity** (`aiSensitivity`, `AI_SENSITIVITIES` in `src/config.js`) sets the threshold: *low* 0.7, *medium* 0.5 (default), *high* 0.3. The **Test** (*Testuj*) button shows the score of its sample text and the threshold, which helps when tuning it. On a set of 20 Polish news snippets the defaults at *medium* hid all 10 about accidents, disasters, crime, death and profanity, and none of the 10 neutral, political or merely sensational ones. The choice form is used because a plain yes/no (`noul`) question ranks texts well but is poorly calibrated on this model (a car crash scored p(true) ≈ 0.3). `max_error` / `abstain` are not used: this model certifies only `choice` at `max_error` 0.05, with a confidence threshold of ≈ 0.97, so nearly every answer abstains.
 
 Warm requests take ~150–300 ms. Check a server and see the raw contract with the bundled script, which also contains a reusable client (`BasalClient`):
 

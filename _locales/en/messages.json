@@ -409,6 +409,56 @@
       }
     }
   },
+  "aiModeLabel": {
+    "message": "Keywords and AI model",
+    "description": "Label of the picker that sets how keywords and the AI model work together."
+  },
+  "aiMode_both": {
+    "message": "Keywords + AI: hide when either matches",
+    "description": "Mode option: a keyword match hides at once, other texts are checked by the AI model."
+  },
+  "aiMode_ai": {
+    "message": "AI only (keywords only while the server is down)",
+    "description": "Mode option: the AI model decides alone; keywords are used only as a fallback."
+  },
+  "aiSensitivityLabel": {
+    "message": "Sensitivity (basal-serve)",
+    "description": "Label of the basal-serve sensitivity picker (hide threshold)."
+  },
+  "aiSensitivity_low": {
+    "message": "Low — hides only clear cases",
+    "description": "Sensitivity option: hide threshold 0.7."
+  },
+  "aiSensitivity_medium": {
+    "message": "Medium (recommended)",
+    "description": "Sensitivity option: hide threshold 0.5."
+  },
+  "aiSensitivity_high": {
+    "message": "High — hides more, more false positives",
+    "description": "Sensitivity option: hide threshold 0.3."
+  },
+  "aiTopicsLabel": {
+    "message": "Hidden topics (basal-serve)",
+    "description": "Legend of the topic checkboxes; each checkbox uses a category_* message."
+  },
+  "aiTopicsEmpty": {
+    "message": "No topics selected — the AI model will not hide anything.",
+    "description": "Warning shown when no topic is selected."
+  },
+  "aiScore": {
+    "message": "Score: $score$ (threshold $threshold$).",
+    "description": "basal-serve connection test: hide score and the threshold, appended to aiConnected*.",
+    "placeholders": {
+      "score": {
+        "content": "$1",
+        "example": "0.04"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
   "languageLabel": {
     "message": "Interface language",
     "description": "Label of the UI language picker."
@@ -464,5 +514,13 @@
   "category_death": {
     "message": "death or tragedy",
     "description": "Category name: the AI model found death, illness or a personal tragedy."
+  },
+  "category_politics": {
+    "message": "politics",
+    "description": "Category name: the AI model found politics, politicians or a political dispute."
+  },
+  "category_clickbait": {
+    "message": "sensationalism / clickbait",
+    "description": "Category name: the AI model found sensationalism or a shocking (clickbait) headline."
   }
 }

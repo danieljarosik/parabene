@@ -455,6 +455,42 @@ body {
   font-weight: 600;
 }
 
+.ai__label--section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.topics {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.topics legend {
+  padding: 0;
+}
+
+.topics__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+}
+
+.topic {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.topic input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 /* Footer */
 
 .footer {

@@ -87,7 +87,7 @@ async function getMessages(locale) {
 async function classify(text) {
   let endpoint = '';
   try {
-    const { aiEndpoint, aiProtocol } = await Config.load();
+    const { aiEndpoint, aiProtocol, aiSensitivity, aiTopics } = await Config.load();
     if (!Config.isValidEndpoint(aiEndpoint)) throw Evaluators.codedError('invalidEndpoint', 'invalid endpoint URL');
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
     const basal = aiProtocol === 'basal';
@@ -95,10 +95,14 @@ async function classify(text) {
     const reply = await Evaluators.fetchTransport({
       endpoint,
       text: input,
-      body: basal ? Evaluators.basalRequest(input) : undefined,
+      body: basal ? Evaluators.basalRequest(input, aiTopics) : undefined,
       timeoutMs: Config.AI_TIMEOUT_MS,
     });
-    if (basal) return { ok: true, data: Evaluators.parseBasalResponse(reply, Config.BASAL_HIDE_THRESHOLD) };
+    if (basal) {
+      const threshold = Config.AI_SENSITIVITIES[aiSensitivity];
+      const data = Evaluators.parseBasalResponse(reply, { threshold, topics: aiTopics });
+      return { ok: true, data: Object.assign(data, { threshold }) };
+    }
     const data = reply;
     if (!data || typeof data.hide !== 'boolean') {
       throw Evaluators.codedError('invalidResponse', 'invalid response (expected {"hide": boolean, "reason": string})');

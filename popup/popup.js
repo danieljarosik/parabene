@@ -25,6 +25,11 @@
     aiEndpoint: document.getElementById('ai-endpoint'),
     aiTest: document.getElementById('ai-test'),
     aiStatus: document.getElementById('ai-status'),
+    aiMode: document.getElementById('ai-mode'),
+    basalSettings: document.getElementById('basal-settings'),
+    aiSensitivity: document.getElementById('ai-sensitivity'),
+    aiTopics: [...document.querySelectorAll('#ai-topics input[type="checkbox"]')],
+    aiTopicsEmpty: document.getElementById('ai-topics-empty'),
     version: document.getElementById('version'),
     language: document.getElementById('language'),
   };
@@ -92,6 +97,11 @@
     els.aiProtocol.value = settings.aiProtocol;
     els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol];
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
+    els.aiMode.value = settings.aiMode;
+    els.basalSettings.hidden = settings.aiProtocol !== 'basal';
+    els.aiSensitivity.value = settings.aiSensitivity;
+    for (const box of els.aiTopics) box.checked = settings.aiTopics.includes(box.value);
+    els.aiTopicsEmpty.hidden = settings.aiTopics.length > 0;
 
     renderLanguagePicker();
     renderKeywords();
@@ -265,8 +275,12 @@
         const { hide, category } = response.data;
         const categoryKey = category ? `category_${category}` : '';
         const reason = categoryKey && i18n.has(categoryKey) ? t(categoryKey) : response.data.reason;
-        const message = reason ? t('aiConnectedWithReason', [hide, reason]) : t('aiConnected', hide);
-        showFeedback(els.aiStatus, message, 'ok');
+        const sentences = [reason ? t('aiConnectedWithReason', [hide, reason]) : t('aiConnected', hide)];
+        const { score, threshold } = response.data;
+        if (typeof score === 'number' && typeof threshold === 'number') {
+          sentences.push(t('aiScore', [i18n.formatNumber(score), i18n.formatNumber(threshold)]));
+        }
+        showFeedback(els.aiStatus, sentences.join(' '), 'ok');
       } else {
         showFeedback(els.aiStatus, t('aiConnectionFailed', describeAiError(response && response.error)), 'error');
       }
@@ -307,6 +321,20 @@
       chrome.storage.local.set({ aiEnabled: els.aiEnabled.checked });
     });
     els.aiProtocol.addEventListener('change', saveProtocol);
+    els.aiMode.addEventListener('change', () => {
+      if (Config.isSupportedMode(els.aiMode.value)) chrome.storage.local.set({ aiMode: els.aiMode.value });
+    });
+    els.aiSensitivity.addEventListener('change', () => {
+      if (Config.isSupportedSensitivity(els.aiSensitivity.value)) {
+        chrome.storage.local.set({ aiSensitivity: els.aiSensitivity.value });
+      }
+    });
+    for (const box of els.aiTopics) {
+      box.addEventListener('change', () => {
+        const topics = els.aiTopics.filter((item) => item.checked).map((item) => item.value);
+        chrome.storage.local.set({ aiTopics: Config.sanitizeTopics(topics) });
+      });
+    }
     els.aiEndpoint.addEventListener('change', saveEndpoint);
     els.aiEndpoint.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {

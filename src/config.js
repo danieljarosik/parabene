@@ -22,8 +22,27 @@
   /** basal-serve's decision route, appended when the endpoint is a bare server address. */
   const BASAL_PATH = '/v1/basal';
 
-  /** basal: hide when the probability that the text is about one of the hidden topics reaches this value. */
-  const BASAL_HIDE_THRESHOLD = 0.5;
+  /**
+   * How keywords and the AI model work together:
+   * - both: a keyword match hides at once (no request); otherwise the model decides,
+   * - ai:   the model decides alone; keywords are used only while the server is unavailable.
+   */
+  const AI_MODES = Object.freeze(['both', 'ai']);
+  const DEFAULT_AI_MODE = 'both';
+
+  /**
+   * basal: sensitivity → hide threshold for the summed probability of the selected topics
+   * (a higher sensitivity hides more, with more false positives).
+   */
+  const AI_SENSITIVITIES = Object.freeze({ low: 0.7, medium: 0.5, high: 0.3 });
+  const DEFAULT_AI_SENSITIVITY = 'medium';
+
+  /**
+   * basal: topics the model can recognise (the ids are also category ids, shown in the bar
+   * via "category_<id>"). Prompts live in src/evaluators.js (BASAL_TOPICS).
+   */
+  const AI_TOPICS = Object.freeze(['accident', 'violence', 'death', 'profanity', 'politics', 'clickbait']);
+  const DEFAULT_AI_TOPICS = Object.freeze(['accident', 'violence', 'death', 'profanity']);
 
   /**
    * UI languages. Each code must have a matching _locales/<code>/messages.json.
@@ -96,6 +115,9 @@
     aiEnabled: false,
     aiEndpoint: DEFAULT_ENDPOINT,
     aiProtocol: DEFAULT_PROTOCOL,
+    aiMode: DEFAULT_AI_MODE,
+    aiSensitivity: DEFAULT_AI_SENSITIVITY,
+    aiTopics: DEFAULT_AI_TOPICS,
     language: DEFAULT_LANGUAGE,
   });
 
@@ -144,6 +166,20 @@
     return AI_PROTOCOLS.includes(value);
   }
 
+  function isSupportedMode(value) {
+    return AI_MODES.includes(value);
+  }
+
+  function isSupportedSensitivity(value) {
+    return typeof value === 'string' && Object.prototype.hasOwnProperty.call(AI_SENSITIVITIES, value);
+  }
+
+  /** Known topic ids only, without duplicates, in AI_TOPICS order. */
+  function sanitizeTopics(list) {
+    const chosen = new Set(Array.isArray(list) ? list : []);
+    return AI_TOPICS.filter((topic) => chosen.has(topic));
+  }
+
   /**
    * The URL a request actually goes to: for basal a bare server address
    * (http://host:port or http://host:port/) gets BASAL_PATH; any other path is kept.
@@ -172,6 +208,9 @@
     PARABENE_AI_ENABLED: 'aiEnabled',
     PARABENE_AI_PROTOCOL: 'aiProtocol',
     PARABENE_AI_ENDPOINT: 'aiEndpoint',
+    PARABENE_AI_MODE: 'aiMode',
+    PARABENE_AI_SENSITIVITY: 'aiSensitivity',
+    PARABENE_AI_TOPICS: 'aiTopics',
     PARABENE_LANGUAGE: 'language',
   });
   const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled']);
@@ -206,6 +245,15 @@
         ignored.push(name);
       } else if (key === 'aiEndpoint' && !isValidEndpoint(value)) {
         ignored.push(name);
+      } else if (key === 'aiMode' && !isSupportedMode(value)) {
+        ignored.push(name);
+      } else if (key === 'aiSensitivity' && !isSupportedSensitivity(value)) {
+        ignored.push(name);
+      } else if (key === 'aiTopics') {
+        // Comma- or space-separated ids; an empty value means "no topics".
+        const topics = value.split(/[\s,;]+/).filter(Boolean);
+        if (topics.every((topic) => AI_TOPICS.includes(topic))) settings[key] = sanitizeTopics(topics);
+        else ignored.push(name);
       } else if (key === 'language' && !isSupportedLanguage(value)) {
         ignored.push(name);
       } else {
@@ -228,6 +276,9 @@
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
       aiProtocol: isSupportedProtocol(s.aiProtocol) ? s.aiProtocol : DEFAULT_PROTOCOL,
+      aiMode: isSupportedMode(s.aiMode) ? s.aiMode : DEFAULT_AI_MODE,
+      aiSensitivity: isSupportedSensitivity(s.aiSensitivity) ? s.aiSensitivity : DEFAULT_AI_SENSITIVITY,
+      aiTopics: Array.isArray(s.aiTopics) ? sanitizeTopics(s.aiTopics) : [...DEFAULT_AI_TOPICS],
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
     };
   }
@@ -265,7 +316,12 @@
     DEFAULT_PROTOCOL,
     DEFAULT_ENDPOINTS,
     BASAL_PATH,
-    BASAL_HIDE_THRESHOLD,
+    AI_MODES,
+    DEFAULT_AI_MODE,
+    AI_SENSITIVITIES,
+    DEFAULT_AI_SENSITIVITY,
+    AI_TOPICS,
+    DEFAULT_AI_TOPICS,
     ENV_FILE,
     ENV_KEYS,
     UI_LANGUAGES,
@@ -282,7 +338,10 @@
     uniqueKeywords,
     isValidEndpoint,
     isSupportedProtocol,
+    isSupportedMode,
+    isSupportedSensitivity,
     isSupportedLanguage,
+    sanitizeTopics,
     resolveEndpoint,
     parseEnv,
     sanitize,
