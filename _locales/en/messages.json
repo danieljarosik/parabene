@@ -459,6 +459,74 @@
       }
     }
   },
+  "engineImagesName": {
+    "message": "Image evaluation (basal-omni)",
+    "description": "Name of the optional image evaluation engine (basal-omni is a model name)."
+  },
+  "engineImagesDesc": {
+    "message": "Sends pictures from posts only to your local server running a multimodal model.",
+    "description": "Description of the image evaluation engine."
+  },
+  "engineImagesToggleLabel": {
+    "message": "Image evaluation",
+    "description": "Tooltip and accessible name of the image evaluation switch."
+  },
+  "aiImagesEndpointLabel": {
+    "message": "Address of the basal-serve server with image support",
+    "description": "Label of the image server URL input."
+  },
+  "aiImagesHint": {
+    "message": "A separate server: basal-serve --model Remek/basal-omni-1.0-mini --mode eager --media on. One picture takes about 2 s, so only posts near the visible part of the page are checked.",
+    "description": "Help text under the image server URL input; the command line is not translated."
+  },
+  "aiImagesConnecting": {
+    "message": "Sending a test picture… (the first request after a server start takes about 15 s)",
+    "description": "Shown while testing the image server."
+  },
+  "aiImagesConnected": {
+    "message": "Connected ✓ Model $model$ judged the test picture in $seconds$ s.",
+    "description": "Image server test succeeded; aiScore may follow.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "basal-omni-1.0-mini"
+      },
+      "seconds": {
+        "content": "$2",
+        "example": "1.8"
+      }
+    }
+  },
+  "aiImagesConnectionFailed": {
+    "message": "No connection to the image server ($error$). Pictures will not be checked.",
+    "description": "Image server test failed; the placeholder is one of the aiError_* messages.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "server is not responding"
+      }
+    }
+  },
+  "aiError_noImageSupport": {
+    "message": "model $model$ does not take images — run basal-serve with a basal-omni model and --media on",
+    "description": "Connection error: the server's model has no image support.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "basal-2.0-mini-MLX-8bit"
+      }
+    }
+  },
+  "aiError_imagesNotFound": {
+    "message": "HTTP 404: the server does not know the path $path$. Enter just the address of the basal-serve server running a basal-omni model, e.g. http://192.168.1.170:8011",
+    "description": "Image server error: the address answered 404 (wrong path).",
+    "placeholders": {
+      "path": {
+        "content": "$1",
+        "example": "/v1/foo/v1/models"
+      }
+    }
+  },
   "languageLabel": {
     "message": "Interface language",
     "description": "Label of the UI language picker."
@@ -484,6 +552,16 @@
       "reason": {
         "content": "$1",
         "example": "violence"
+      }
+    }
+  },
+  "barReasonAiImage": {
+    "message": "(reason: $reason$, AI – picture)",
+    "description": "Reason for hiding given by the AI model after judging a picture of the content, shown in the bar.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "accident"
       }
     }
   },

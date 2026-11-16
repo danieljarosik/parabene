@@ -45,6 +45,26 @@
   const DEFAULT_AI_TOPICS = Object.freeze(['accident', 'violence', 'death', 'profanity']);
 
   /**
+   * Optional image evaluation (`aiImagesEnabled`): pictures inside the containers are judged by a
+   * separate basal-serve server running a multimodal model (basal-omni, `--media on`), so the fast
+   * text model keeps its own server. It shares the sensitivity and the hidden topics with the text
+   * model; topics that make no sense for a picture (IMAGE_SKIPPED_TOPICS) are not asked.
+   * One image is ~1.8 s of server time (requests are served one at a time), hence the generous
+   * timeout (the first request after a server start also loads the model) and the low concurrency.
+   */
+  const DEFAULT_IMAGE_ENDPOINT = 'http://localhost:8011';
+  const IMAGE_SKIPPED_TOPICS = Object.freeze(['clickbait']);
+  const IMAGE_TIMEOUT_MS = 30000;
+  const IMAGE_MAX_CONCURRENT = 2;
+  /** Pictures smaller than this (natural and rendered size, px) are icons, avatars or emoji. */
+  const IMAGE_MIN_SIDE = 100;
+  /** At most this many of the largest pictures of a container are judged. */
+  const IMAGE_MAX_PER_CONTAINER = 2;
+  /** Pictures are scaled down to this longest side before sending (the model sees ~280 tokens anyway). */
+  const IMAGE_MAX_SEND_SIDE = 768;
+  const IMAGE_MAX_BYTES = 15 * 1024 * 1024;
+
+  /**
    * UI languages. Each code must have a matching _locales/<code>/messages.json.
    * Names are endonyms (each language in its own name), as is the convention
    * for language pickers.
@@ -118,12 +138,16 @@
     aiMode: DEFAULT_AI_MODE,
     aiSensitivity: DEFAULT_AI_SENSITIVITY,
     aiTopics: DEFAULT_AI_TOPICS,
+    aiImagesEnabled: false,
+    aiImagesEndpoint: DEFAULT_IMAGE_ENDPOINT,
     logEnabled: false,
     language: DEFAULT_LANGUAGE,
   });
 
   const MSG = Object.freeze({
     CLASSIFY: 'parabene:classify',
+    CLASSIFY_IMAGE: 'parabene:classifyImage',
+    TEST_IMAGES: 'parabene:testImages',
     STATS: 'parabene:stats',
     GET_STATS: 'parabene:getStats',
     GET_MESSAGES: 'parabene:getMessages',
@@ -224,10 +248,12 @@
     PARABENE_AI_MODE: 'aiMode',
     PARABENE_AI_SENSITIVITY: 'aiSensitivity',
     PARABENE_AI_TOPICS: 'aiTopics',
+    PARABENE_AI_IMAGES_ENABLED: 'aiImagesEnabled',
+    PARABENE_AI_IMAGES_ENDPOINT: 'aiImagesEndpoint',
     PARABENE_LOG_ENABLED: 'logEnabled',
     PARABENE_LANGUAGE: 'language',
   });
-  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'logEnabled']);
+  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'aiImagesEnabled', 'logEnabled']);
 
   /**
    * .env text (KEY=VALUE lines, # comments, optional quotes) → partial settings.
@@ -257,7 +283,7 @@
         else ignored.push(name);
       } else if (key === 'aiProtocol' && !isSupportedProtocol(value)) {
         ignored.push(name);
-      } else if (key === 'aiEndpoint' && !isValidEndpoint(value)) {
+      } else if ((key === 'aiEndpoint' || key === 'aiImagesEndpoint') && !isValidEndpoint(value)) {
         ignored.push(name);
       } else if (key === 'aiMode' && !isSupportedMode(value)) {
         ignored.push(name);
@@ -284,6 +310,7 @@
   function sanitize(raw) {
     const s = Object.assign({}, DEFAULT_SETTINGS, raw || {});
     const endpoint = typeof s.aiEndpoint === 'string' ? s.aiEndpoint.trim() : '';
+    const imagesEndpoint = typeof s.aiImagesEndpoint === 'string' ? s.aiImagesEndpoint.trim() : '';
     return {
       enabled: s.enabled !== false,
       keywords: uniqueKeywords(Array.isArray(s.keywords) ? s.keywords : DEFAULT_KEYWORDS),
@@ -293,6 +320,8 @@
       aiMode: isSupportedMode(s.aiMode) ? s.aiMode : DEFAULT_AI_MODE,
       aiSensitivity: isSupportedSensitivity(s.aiSensitivity) ? s.aiSensitivity : DEFAULT_AI_SENSITIVITY,
       aiTopics: Array.isArray(s.aiTopics) ? sanitizeTopics(s.aiTopics) : [...DEFAULT_AI_TOPICS],
+      aiImagesEnabled: s.aiImagesEnabled === true,
+      aiImagesEndpoint: imagesEndpoint || DEFAULT_IMAGE_ENDPOINT,
       logEnabled: s.logEnabled === true,
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
     };
@@ -337,6 +366,14 @@
     DEFAULT_AI_SENSITIVITY,
     AI_TOPICS,
     DEFAULT_AI_TOPICS,
+    DEFAULT_IMAGE_ENDPOINT,
+    IMAGE_SKIPPED_TOPICS,
+    IMAGE_TIMEOUT_MS,
+    IMAGE_MAX_CONCURRENT,
+    IMAGE_MIN_SIDE,
+    IMAGE_MAX_PER_CONTAINER,
+    IMAGE_MAX_SEND_SIDE,
+    IMAGE_MAX_BYTES,
     ENV_FILE,
     ENV_KEYS,
     UI_LANGUAGES,

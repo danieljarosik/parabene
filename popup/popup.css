@@ -475,6 +475,16 @@ body {
   opacity: 0.6;
 }
 
+/* The image engine and the shared basal settings follow the text model's settings. */
+.engine--split {
+  margin-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.ai--follow {
+  margin-top: 8px;
+}
+
 .ai__select {
   display: block;
   width: 100%;

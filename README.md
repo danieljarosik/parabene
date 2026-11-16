@@ -10,7 +10,7 @@ Hidden content does not disappear from the page: it collapses into an unobtrusiv
 so it can be revealed with a single click in case of a false positive.
 
 - Plain JavaScript, HTML and CSS — **no `npm install`, no bundler, no external dependencies**.
-- Everything runs locally. Page text never leaves your machine or home network (the optional AI model runs on `localhost` or on a server you choose in your LAN).
+- Everything runs locally. Page text never leaves your machine or home network (the optional AI model runs on `localhost` or on a server you choose in your LAN); the same goes for pictures with the optional image evaluation.
 - Modular decision engine, ready for plugging in a local AI model (Stage 2).
 
 > The user interface is available in **Polish (default) and English** — switch it with the language picker in the panel's footer. The default keyword list is Polish, as ParaBene targets Polish-language websites.
@@ -49,6 +49,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
 | **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
+| **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
 | **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords or AI); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
@@ -96,7 +97,7 @@ parabene/
 │   ├── evaluators.js      ContentEvaluator, KeywordEvaluator, LocalAIEvaluator, FallbackEvaluator
 │   ├── content.js         MutationObserver, container heuristics, hiding/restoring
 │   ├── content.css        styles for hidden blocks and the placeholder bar
-│   └── background.js      service worker: default settings, local AI proxy, icon badge counter, translations for content scripts
+│   └── background.js      service worker: default settings, local AI proxy (text and pictures), icon badge counter, log, translations for content scripts
 ├── popup/
 │   ├── popup.html
 │   ├── popup.css
@@ -142,6 +143,8 @@ All settings live in `chrome.storage.local`:
   "aiMode": "both",
   "aiSensitivity": "medium",
   "aiTopics": ["accident", "violence", "death", "profanity"],
+  "aiImagesEnabled": false,
+  "aiImagesEndpoint": "http://localhost:8011",
   "logEnabled": false,
   "language": "pl"
 }
@@ -161,9 +164,11 @@ PARABENE_AI_PROTOCOL=basal
 PARABENE_AI_ENDPOINT=http://192.168.1.170:8010
 PARABENE_AI_SENSITIVITY=medium
 PARABENE_AI_TOPICS=accident,violence,death,profanity,politics
+PARABENE_AI_IMAGES_ENABLED=true
+PARABENE_AI_IMAGES_ENDPOINT=http://192.168.1.170:8011
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_LOG_ENABLED` (`true`/`false`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -330,6 +335,60 @@ Warm requests take ~150–300 ms. Check a server and see the raw contract with t
 python3 tools/basal_check.py --url http://192.168.1.170:8010
 ```
 
+### Image evaluation (basal-omni)
+
+Turn on **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) to judge pictures as well. It needs a second basal-serve server with a multimodal model and media enabled; the text model keeps its own, much faster server:
+
+```bash
+basal-serve --model Remek/basal-omni-1.0-mini --mode eager --media on --host 0.0.0.0 --port 8011
+```
+
+Enter its address in the panel (default `http://localhost:8011`; `/v1/basal` is appended) and click **Test** (*Testuj*): it checks `GET /v1/models` (a model without `"image"` in `media`, e.g. the text-only `basal-2.0-mini`, is reported) and sends a generated landscape. The first request after a server start loads the model and takes ~15 s.
+
+**What is judged.** After a container's text has been checked and has not hidden it, its pictures are judged: `<img>` elements of the container itself (not of nested containers such as comments), at least 100 px a side (natural size) and rendered at least 80 × 60 px, so icons, avatars and emoji are skipped; SVG is skipped. At most the two largest pictures of a container are asked about, one request each. A picture loaded later (lazy loading, carousels) triggers a new check. A container hidden because of its picture shows *(powód: wypadek, AI – grafika)* (*reason: accident, AI – picture*) and counts as **AI model** (*Model AI*).
+
+**Viewport first.** One picture is ~1.8 s of server time and the server answers one request at a time, so containers are judged only when they come within 600 px of the viewport (an `IntersectionObserver`), at most two requests at once across all tabs. On a photo-heavy portal this kept up with steady scrolling (16 pictures in ~50 s).
+
+**How a picture is sent.** The service worker fetches the picture from the address the page uses (without cookies), scales it to at most 768 px a side and re-encodes it as JPEG (transparency on white; an animated GIF becomes its first frame, which basal would otherwise refuse) and sends it in basal's `media` field with an empty `state`:
+
+```json
+{
+  "state": "",
+  "lang": "pl",
+  "media": [{"type": "image", "data": "<base64 JPEG>"}],
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "Co przedstawia obraz?",
+      "option_keys": "hide",
+      "criteria": {
+        "accident": "wypadek, katastrofę, pożar lub klęskę żywiołową",
+        "violence": "przemoc, broń, walkę zbrojną lub zniszczenia wojenne",
+        "death": "śmierć, zwłoki, krew lub rannych ludzi",
+        "profanity": "wulgarny gest, nagość lub obsceniczne treści",
+        "none": "coś innego, neutralnego lub pozytywnego"
+      }
+    }
+  }
+}
+```
+
+The score, threshold and hidden topics work as for text. `politics` (*polityków, wiec lub wydarzenie polityczne*) is asked when checked; `clickbait` is never asked about a picture. Results are cached per picture address in the service worker (500 entries), so a sensitivity change or a page reload does not ask again. Pictures that cannot be fetched or decoded (or that the server refuses with HTTP 422) are skipped; any other error pauses image evaluation in that tab for 30 s, and the requests time out after 30 s.
+
+Measured with `Remek/basal-omni-1.0-mini` on 20 photos at the default topics:
+
+| Picture | Score | Picture | Score |
+| --- | --- | --- | --- |
+| car crash | 0.97 | cat, dog, pizza, fries, mountains | 0.00 |
+| destroyed tank | 0.95 | hospital corridor, politician at a podium | 0.00 |
+| burning warehouse / wildfire | 0.83 / 0.88 | fire station building | 0.01 |
+| flooded street | 0.83 | cemetery with candles (All Saints' Day) | 0.03 |
+| police car after a collision | 0.77 | kids' boxing match / military parade | 0.15 / 0.25 |
+
+The model judges what it sees, not the context: a firefighting drill with real flames scored 0.88 (accident), as a real fire would, and a politician at a podium scored only 0.35 for `politics`.
+
+Asking about several pictures in one request is not faster (~1.5 s each) and blurs the verdict (a tank among three neutral photos scored 0.07), and the picture size does not change the time (the model sees ~280 tokens of any picture). The model was trained on text decisions; its picture answers are zero-shot, so check the log on your own pages. `tools/basal_check.py --url http://localhost:8011 --image photo.jpg` asks the same question about a file.
+
 ---
 
 ## Log of hidden content
@@ -353,6 +412,7 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 | `fallback` | `true` when keywords decided because the AI server was unavailable. |
 | `revealed` | `true` when you clicked **Show anyway** (*Pokaż mimo wszystko*), usually a false positive. |
 | `details` | AI only: the hide `score`, the `threshold`, basal's `probabilities` per topic and the `model` name. |
+| `media`, `image` | Only for items hidden because of a picture: `"image"` and the picture's address (a `data:` URL is reduced to its type). Such items are recorded once per picture. |
 | `text` | The text that was evaluated (the AI model received at most its first 2,000 characters). |
 
 ---
@@ -362,6 +422,7 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 - No telemetry, analytics or external servers.
 - Settings are stored only in `chrome.storage.local`.
 - The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
+- With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.
 - In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself).
 
 ## Permissions
@@ -370,7 +431,7 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 | --- | --- |
 | `storage` | saving settings and the phrase list |
 | `activeTab` | reading the hidden-elements counter from the current tab |
-| `host_permissions: <all_urls>` | running the filter on news portals and social media |
+| `host_permissions: <all_urls>` | running the filter on news portals and social media; fetching pictures for the optional image evaluation |
 | `http://localhost/*`, `http://127.0.0.1/*` | connecting to the local AI model |
 
 ## Development

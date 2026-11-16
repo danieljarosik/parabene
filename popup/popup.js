@@ -29,6 +29,11 @@
     aiTest: document.getElementById('ai-test'),
     aiStatus: document.getElementById('ai-status'),
     aiMode: document.getElementById('ai-mode'),
+    aiImagesEnabled: document.getElementById('ai-images-enabled'),
+    aiImagesSettings: document.getElementById('ai-images-settings'),
+    aiImagesEndpoint: document.getElementById('ai-images-endpoint'),
+    aiImagesTest: document.getElementById('ai-images-test'),
+    aiImagesStatus: document.getElementById('ai-images-status'),
     basalSettings: document.getElementById('basal-settings'),
     aiSensitivity: document.getElementById('ai-sensitivity'),
     aiTopics: [...document.querySelectorAll('#ai-topics input[type="checkbox"]')],
@@ -80,7 +85,9 @@
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
     clearTimeout(feedbackTimer);
-    for (const hint of [els.keywordFeedback, els.aiStatus]) hint.classList.remove('hint--ok', 'hint--error');
+    for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus]) {
+      hint.classList.remove('hint--ok', 'hint--error');
+    }
     I18n.localize(document, i18n);
     render();
   }
@@ -109,7 +116,16 @@
     els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol];
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
     els.aiMode.value = settings.aiMode;
-    els.basalSettings.hidden = settings.aiProtocol !== 'basal';
+    els.aiImagesEnabled.checked = settings.aiImagesEnabled;
+    els.aiImagesSettings.classList.toggle('ai--inactive', !settings.aiImagesEnabled);
+    if (document.activeElement !== els.aiImagesEndpoint) els.aiImagesEndpoint.value = settings.aiImagesEndpoint;
+    // Sensitivity and topics apply to basal-serve text evaluation and to image evaluation.
+    const basalText = settings.aiProtocol === 'basal';
+    els.basalSettings.hidden = !basalText && !settings.aiImagesEnabled;
+    els.basalSettings.classList.toggle(
+      'ai--inactive',
+      !(basalText && settings.aiEnabled) && !settings.aiImagesEnabled
+    );
     els.aiSensitivity.value = settings.aiSensitivity;
     for (const box of els.aiTopics) box.checked = settings.aiTopics.includes(box.value);
     els.aiTopicsEmpty.hidden = settings.aiTopics.length > 0;
@@ -284,6 +300,48 @@
     showFeedback(els.aiStatus, t('aiProtocolSaved'), 'ok', 'aiHint');
   }
 
+  /* ---------------- Image evaluation ---------------- */
+
+  async function saveImagesEndpoint() {
+    const value = els.aiImagesEndpoint.value.trim();
+    if (!Config.isValidEndpoint(value)) {
+      els.aiImagesEndpoint.classList.add('input--invalid');
+      showFeedback(els.aiImagesStatus, t('aiErrorInvalidUrl', Config.DEFAULT_IMAGE_ENDPOINT), 'error');
+      return false;
+    }
+    els.aiImagesEndpoint.classList.remove('input--invalid');
+    if (value !== settings.aiImagesEndpoint) {
+      await chrome.storage.local.set({ aiImagesEndpoint: value });
+      showFeedback(els.aiImagesStatus, t('aiEndpointSaved'), 'ok', 'aiImagesHint');
+    }
+    return true;
+  }
+
+  async function testImagesEndpoint() {
+    if (!(await saveImagesEndpoint())) return;
+    els.aiImagesTest.disabled = true;
+    showFeedback(els.aiImagesStatus, t('aiImagesConnecting'), null);
+    try {
+      const response = await chrome.runtime.sendMessage({ type: Config.MSG.TEST_IMAGES });
+      if (response && response.ok) {
+        const { model, ms, score, threshold } = response.data;
+        const seconds = i18n.formatNumber(Math.round(ms / 100) / 10);
+        const sentences = [t('aiImagesConnected', [model || '?', seconds])];
+        if (typeof score === 'number' && typeof threshold === 'number') {
+          sentences.push(t('aiScore', [i18n.formatNumber(score), i18n.formatNumber(threshold)]));
+        }
+        showFeedback(els.aiImagesStatus, sentences.join(' '), 'ok');
+      } else {
+        const error = describeAiError(response && response.error);
+        showFeedback(els.aiImagesStatus, t('aiImagesConnectionFailed', error), 'error');
+      }
+    } catch (err) {
+      showFeedback(els.aiImagesStatus, t('aiImagesConnectionFailed', t('aiError_unknown', err.message)), 'error');
+    } finally {
+      els.aiImagesTest.disabled = false;
+    }
+  }
+
   /** Translates a { code, detail } error from the service worker (messages "aiError_<code>"). */
   function describeAiError(error) {
     if (!error) return t('aiError_noResponse');
@@ -366,6 +424,7 @@
         aiSensitivity: settings.aiSensitivity,
         aiThreshold: Config.AI_SENSITIVITIES[settings.aiSensitivity],
         aiTopics: settings.aiTopics,
+        aiImagesEnabled: settings.aiImagesEnabled,
         keywords: settings.keywords,
       },
     };
@@ -454,6 +513,18 @@
     });
     els.aiEndpoint.addEventListener('input', () => els.aiEndpoint.classList.remove('input--invalid'));
     els.aiTest.addEventListener('click', testEndpoint);
+    els.aiImagesEnabled.addEventListener('change', () => {
+      chrome.storage.local.set({ aiImagesEnabled: els.aiImagesEnabled.checked });
+    });
+    els.aiImagesEndpoint.addEventListener('change', saveImagesEndpoint);
+    els.aiImagesEndpoint.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveImagesEndpoint();
+      }
+    });
+    els.aiImagesEndpoint.addEventListener('input', () => els.aiImagesEndpoint.classList.remove('input--invalid'));
+    els.aiImagesTest.addEventListener('click', testImagesEndpoint);
     els.logEnabled.addEventListener('change', () => {
       chrome.storage.local.set({ logEnabled: els.logEnabled.checked });
     });

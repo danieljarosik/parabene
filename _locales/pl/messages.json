@@ -459,6 +459,74 @@
       }
     }
   },
+  "engineImagesName": {
+    "message": "Ocena grafik (basal-omni)",
+    "description": "Name of the optional image evaluation engine (basal-omni is a model name)."
+  },
+  "engineImagesDesc": {
+    "message": "Wysyła obrazki z postów wyłącznie na Twój lokalny serwer z modelem multimodalnym.",
+    "description": "Description of the image evaluation engine."
+  },
+  "engineImagesToggleLabel": {
+    "message": "Ocena grafik",
+    "description": "Tooltip and accessible name of the image evaluation switch."
+  },
+  "aiImagesEndpointLabel": {
+    "message": "Adres serwera basal-serve z obsługą obrazów",
+    "description": "Label of the image server URL input."
+  },
+  "aiImagesHint": {
+    "message": "Osobny serwer: basal-serve --model Remek/basal-omni-1.0-mini --mode eager --media on. Jeden obrazek to ok. 2 s, więc oceniane są tylko posty blisko widocznej części strony.",
+    "description": "Help text under the image server URL input; the command line is not translated."
+  },
+  "aiImagesConnecting": {
+    "message": "Wysyłanie obrazu testowego… (pierwsze zapytanie po starcie serwera trwa ok. 15 s)",
+    "description": "Shown while testing the image server."
+  },
+  "aiImagesConnected": {
+    "message": "Połączono ✓ Model $model$ ocenił obraz testowy w $seconds$ s.",
+    "description": "Image server test succeeded; aiScore may follow.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "basal-omni-1.0-mini"
+      },
+      "seconds": {
+        "content": "$2",
+        "example": "1.8"
+      }
+    }
+  },
+  "aiImagesConnectionFailed": {
+    "message": "Brak połączenia z serwerem obrazów ($error$). Grafiki nie będą oceniane.",
+    "description": "Image server test failed; the placeholder is one of the aiError_* messages.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "server is not responding"
+      }
+    }
+  },
+  "aiError_noImageSupport": {
+    "message": "model $model$ nie przyjmuje obrazów — uruchom basal-serve z modelem basal-omni i opcją --media on",
+    "description": "Connection error: the server's model has no image support.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "basal-2.0-mini-MLX-8bit"
+      }
+    }
+  },
+  "aiError_imagesNotFound": {
+    "message": "HTTP 404: serwer nie zna ścieżki $path$. Wpisz sam adres serwera basal-serve z modelem basal-omni, np. http://192.168.1.170:8011",
+    "description": "Image server error: the address answered 404 (wrong path).",
+    "placeholders": {
+      "path": {
+        "content": "$1",
+        "example": "/v1/foo/v1/models"
+      }
+    }
+  },
   "languageLabel": {
     "message": "Język interfejsu",
     "description": "Label of the UI language picker."
@@ -484,6 +552,16 @@
       "reason": {
         "content": "$1",
         "example": "violence"
+      }
+    }
+  },
+  "barReasonAiImage": {
+    "message": "(powód: $reason$, AI – grafika)",
+    "description": "Reason for hiding given by the AI model after judging a picture of the content, shown in the bar.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "wypadek"
       }
     }
   },

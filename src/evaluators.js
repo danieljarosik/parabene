@@ -215,6 +215,51 @@
   }
 
   /**
+   * Images (basal-omni with `--media on`): the same choice question, asked about a picture sent in
+   * the request's "media" (base64) with an empty state. The topic descriptions are worded for
+   * pictures. Measured on 20 photos (basal-omni-1.0-mini): car crashes, fires, a flood and a
+   * destroyed tank scored 0.77–0.97; pets, food, landscapes, a hospital corridor, a fire station,
+   * a cemetery with candles, a kids' boxing match and a military parade 0.00–0.25 (a firefighting
+   * drill with real flames scored 0.88: the model judges what it sees, not the context). Several pictures
+   * in one request are not cheaper (~1.5 s each) and blur the verdict (a tank among three neutral
+   * photos scored 0.07), so every picture is a request of its own.
+   */
+  const BASAL_IMAGE_TOPICS = Object.freeze({
+    accident: 'wypadek, katastrofę, pożar lub klęskę żywiołową',
+    violence: 'przemoc, broń, walkę zbrojną lub zniszczenia wojenne',
+    death: 'śmierć, zwłoki, krew lub rannych ludzi',
+    profanity: 'wulgarny gest, nagość lub obsceniczne treści',
+    politics: 'polityków, wiec lub wydarzenie polityczne',
+  });
+
+  /** Selected topics that can be asked about a picture. */
+  function basalImageTopics(selected = BASAL_DEFAULT_TOPICS) {
+    return selected.filter((key) => Object.prototype.hasOwnProperty.call(BASAL_IMAGE_TOPICS, key));
+  }
+
+  /** `image`: base64 (or a data: URL) of a single-frame picture. */
+  function basalImageRequest(image, selected = BASAL_DEFAULT_TOPICS) {
+    const criteria = {};
+    for (const key of Object.keys(BASAL_IMAGE_TOPICS)) {
+      if (BASAL_CORE_TOPICS.includes(key) || selected.includes(key)) criteria[key] = BASAL_IMAGE_TOPICS[key];
+    }
+    criteria[BASAL_NONE] = BASAL_NONE_TEXT;
+    return {
+      state: '',
+      lang: 'pl',
+      media: [{ type: 'image', data: image }],
+      questions: {
+        [BASAL_QUESTION]: {
+          type: 'choice',
+          instructions: 'Co przedstawia obraz?',
+          criteria,
+          option_keys: 'hide',
+        },
+      },
+    };
+  }
+
+  /**
    * basal reply → {hide, reason, category, score, probabilities, model}: score = summed
    * probability of the selected topics, hide when it reaches `threshold`; the category is the
    * most probable selected topic. Throws `invalidResponse` when the reply has no probabilities.
@@ -388,12 +433,16 @@
     LocalAIEvaluator,
     FallbackEvaluator,
     FirstHitEvaluator,
+    ConcurrencyLimiter,
     codedError,
     fetchTransport,
     BASAL_TOPICS,
     BASAL_CORE_TOPICS,
     basalAskedTopics,
     basalRequest,
+    BASAL_IMAGE_TOPICS,
+    basalImageTopics,
+    basalImageRequest,
     parseBasalResponse,
     createRuntimeTransport,
     createEvaluator,

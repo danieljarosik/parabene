@@ -4,6 +4,8 @@
  * This file finds content containers (posts, article tiles), extracts their
  * text and passes it to the evaluator (src/evaluators.js). Only the evaluator
  * decides whether something gets hidden — there is no text-scoring logic here.
+ * With image evaluation on, the pictures of containers the text did not hide are
+ * judged by the service worker (the multimodal model), nearest the viewport first.
  */
 (() => {
   'use strict';
@@ -22,6 +24,7 @@
   const ATTR_REASON = 'data-parabene-reason';
   const ATTR_SOURCE = 'data-parabene-source';
   const ATTR_CATEGORY = 'data-parabene-category';
+  const ATTR_MEDIA = 'data-parabene-media';
   const CLASS_HIDDEN = 'parabene-hidden';
   const CLASS_BAR = 'parabene-bar';
 
@@ -35,6 +38,16 @@
   const MAX_TILE_CLIMB = 6;
   const MAX_CONTAINER_TEXT = 6000;
   const MAX_HEADINGS_IN_CONTAINER = 4;
+
+  /** Pictures are judged when their container comes within this distance of the viewport. */
+  const IMAGE_ROOT_MARGIN = '600px 0px';
+  /** Rendered size below which a picture is an icon or an avatar (px). */
+  const IMAGE_MIN_RENDERED_WIDTH = 80;
+  const IMAGE_MIN_RENDERED_HEIGHT = 60;
+  /** How long image evaluation pauses after the image server failed. */
+  const IMAGE_COOLDOWN_MS = 30000;
+  /** Errors that concern one picture only (it is skipped); anything else pauses image evaluation. */
+  const IMAGE_SKIP_ERRORS = new Set(['imageFetch', 'imageDecode', 'imageTooSmall']);
 
   const HEADING_SEL = 'h1, h2, h3';
   const HEADING_LINK_SEL = 'h1 a[href], h2 a[href], h3 a[href], a[href] h1, a[href] h2, a[href] h3';
@@ -77,13 +90,24 @@
     timer: 0,
     firstQueuedAt: 0,
     hidden: { keyword: 0, ai: 0 },
-    hiddenTexts: new WeakMap(),
+    hiddenItems: new WeakMap(),
     lastHref: location.href,
     textLengths: new WeakMap(),
     inFlight: new WeakSet(),
     dirty: new WeakSet(),
     statsTimer: 0,
     alive: true,
+    images: {
+      enabled: false,
+      observer: null,
+      pending: new Set(),
+      visible: new Set(),
+      active: 0,
+      retryAt: 0,
+      retryTimer: 0,
+      checked: new WeakMap(),
+      listening: new WeakSet(),
+    },
   };
 
   /* ------------------------------------------------------------------ */
@@ -218,7 +242,8 @@
     el.setAttribute(ATTR_CHECKED, 'true');
 
     if (text.length < MIN_TEXT_LENGTH) {
-      if (el.classList.contains(CLASS_HIDDEN)) unhide(el);
+      if (el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el)) unhide(el);
+      queueImageCheck(el);
       return;
     }
 
@@ -241,14 +266,188 @@
     if (!stale && result && el.isConnected && !el.hasAttribute(ATTR_REVEALED)) {
       if (result.hide) {
         const previous = hiddenSource(el);
+        const byImage = hiddenByImage(el);
         hide(el, result);
-        state.hiddenTexts.set(el, text);
-        if (previous !== hiddenSource(el)) logHidden(text, result);
-      } else if (el.classList.contains(CLASS_HIDDEN)) {
+        state.hiddenItems.set(el, { text });
+        if (previous !== hiddenSource(el) || byImage) logHidden(text, result);
+      } else {
+        // A container hidden because of its picture stays hidden until the picture is judged again.
+        if (el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el)) unhide(el);
+        queueImageCheck(el);
+      }
+    } else if (!stale && !result) {
+      queueImageCheck(el);
+    }
+    if (rerun) evaluateCandidate(el);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Image evaluation (optional, multimodal model via the service worker) */
+  /* ------------------------------------------------------------------ */
+
+  function hiddenByImage(el) {
+    return el.classList.contains(CLASS_HIDDEN) && el.getAttribute(ATTR_MEDIA) === 'image';
+  }
+
+  /** Puts a container in the image queue; it is judged once it comes near the viewport. */
+  function queueImageCheck(el) {
+    const images = state.images;
+    if (!images.enabled || !images.observer || !el.isConnected || el.hasAttribute(ATTR_REVEALED)) return;
+    if (el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el)) return; // already hidden by its text
+    images.pending.add(el);
+    images.observer.observe(el); // reports the current intersection right away
+  }
+
+  function onImageIntersection(entries) {
+    const images = state.images;
+    for (const entry of entries) {
+      if (entry.isIntersecting && images.pending.has(entry.target)) images.visible.add(entry.target);
+      else images.visible.delete(entry.target);
+    }
+    pumpImages();
+  }
+
+  function pumpImages() {
+    const images = state.images;
+    if (!images.enabled || !state.enabled) return;
+    const wait = images.retryAt - Date.now();
+    if (wait > 0) {
+      clearTimeout(images.retryTimer);
+      images.retryTimer = setTimeout(pumpImages, wait);
+      return;
+    }
+    for (const el of images.visible) {
+      if (images.active >= Config.IMAGE_MAX_CONCURRENT) return;
+      images.visible.delete(el);
+      images.pending.delete(el);
+      if (images.observer) images.observer.unobserve(el);
+      if (el.isConnected) checkImages(el);
+    }
+  }
+
+  /** Re-checks a container when one of its pictures (re)loads — lazy loading, carousels. */
+  function listenForLoad(img) {
+    if (state.images.listening.has(img)) return;
+    state.images.listening.add(img);
+    img.addEventListener('load', () => {
+      const owner = img.closest(`[${ATTR_CANDIDATE}]`);
+      if (owner) queueImageCheck(owner);
+    });
+  }
+
+  /** The largest pictures of the container itself (not of nested containers such as comments). */
+  function pickImages(el) {
+    // Inside a hidden container pictures are not rendered: only their natural size counts then.
+    const rendered = !el.classList.contains(CLASS_HIDDEN);
+    const found = [];
+    for (const img of el.querySelectorAll('img')) {
+      if (img.closest(`[${ATTR_CANDIDATE}]`) !== el || img.closest(`.${CLASS_BAR}`)) continue;
+      listenForLoad(img);
+      const src = img.currentSrc || img.src || '';
+      if (!/^(https?:|data:image\/)/i.test(src) || /^data:image\/svg|\.svg(?:[?#]|$)/i.test(src)) continue;
+      if (!img.complete || Math.min(img.naturalWidth, img.naturalHeight) < Config.IMAGE_MIN_SIDE) continue;
+      let area = img.naturalWidth * img.naturalHeight;
+      if (rendered) {
+        const rect = img.getBoundingClientRect();
+        if (rect.width < IMAGE_MIN_RENDERED_WIDTH || rect.height < IMAGE_MIN_RENDERED_HEIGHT) continue;
+        area = rect.width * rect.height;
+      }
+      found.push({ img, src, area });
+    }
+    found.sort((a, b) => b.area - a.area);
+    return found.slice(0, Config.IMAGE_MAX_PER_CONTAINER);
+  }
+
+  /**
+   * One picture → an evaluator-style result, or null when the picture cannot be judged.
+   * Throws when the image server is unavailable.
+   */
+  async function judgeImage(img, src) {
+    const known = state.images.checked.get(img);
+    if (known && known.src === src) return known.result;
+    const response = await chrome.runtime.sendMessage({ type: Config.MSG.CLASSIFY_IMAGE, url: src });
+    let result = null;
+    if (response && response.ok) {
+      const data = response.data;
+      result = { hide: Boolean(data.hide), reason: '', source: 'ai', media: 'image', image: src };
+      if (data.hide && data.category) result.category = data.category;
+      result.details = {
+        score: data.score,
+        threshold: data.threshold,
+        probabilities: data.probabilities,
+        model: data.model,
+      };
+    } else {
+      const error = (response && response.error) || { code: 'noResponse' };
+      const skip = IMAGE_SKIP_ERRORS.has(error.code) || (error.code === 'http' && error.detail === '422');
+      if (!skip) throw Evaluators.codedError(error.code, `${error.code}: ${error.detail || ''}`, error.detail);
+      console.debug('[ParaBene] Picture skipped:', error.code, error.detail || '', src.slice(0, 200));
+    }
+    state.images.checked.set(img, { src, result });
+    return result;
+  }
+
+  async function checkImages(el) {
+    const images = state.images;
+    const generation = state.generation;
+    images.active += 1;
+    let verdict = null;
+    let failed = false;
+    try {
+      for (const { img, src } of pickImages(el)) {
+        const result = await judgeImage(img, src);
+        if (result && result.hide) {
+          verdict = result;
+          break;
+        }
+      }
+    } catch (err) {
+      failed = true;
+      if (generation === state.generation) {
+        images.retryAt = Date.now() + IMAGE_COOLDOWN_MS;
+        console.info('[ParaBene] Image model unavailable, pausing image checks for 30 s:', err.message);
+      }
+    } finally {
+      images.active -= 1;
+    }
+
+    const current = generation === state.generation && state.enabled && images.enabled;
+    if (current && el.isConnected && !el.hasAttribute(ATTR_REVEALED)) {
+      if (failed) {
+        queueImageCheck(el); // retried after the pause
+      } else if (verdict) {
+        const textHidden = el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el);
+        if (!textHidden) {
+          const known = state.hiddenItems.get(el);
+          const isNew = !hiddenByImage(el) || !known || known.image !== verdict.image;
+          const text = ownText(el);
+          hide(el, verdict);
+          state.hiddenItems.set(el, { text, image: verdict.image });
+          if (isNew) logHidden(text, verdict);
+        }
+      } else if (hiddenByImage(el)) {
         unhide(el);
       }
     }
-    if (rerun) evaluateCandidate(el);
+    pumpImages();
+  }
+
+  /** (Re)starts image evaluation for new settings; previous verdicts are judged again. */
+  function applyImageSettings(settings) {
+    const images = state.images;
+    if (images.observer) images.observer.disconnect();
+    clearTimeout(images.retryTimer);
+    images.observer = null;
+    images.pending.clear();
+    images.visible.clear();
+    images.checked = new WeakMap();
+    images.retryAt = 0;
+    images.enabled = settings.enabled && settings.aiImagesEnabled;
+    if (images.enabled) {
+      images.observer = new IntersectionObserver(onImageIntersection, { rootMargin: IMAGE_ROOT_MARGIN });
+    } else {
+      for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}[${ATTR_MEDIA}="image"]`)) unhide(el);
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -261,6 +460,7 @@
     const categoryKey = result.category ? `category_${result.category}` : '';
     let reason = categoryKey && has(categoryKey) ? t(categoryKey) : result.reason;
     if (!reason) reason = t(result.source === 'ai' ? 'reasonAiDefault' : 'reasonUnknown');
+    if (result.media === 'image') return t('barReasonAiImage', reason);
     return t(result.source === 'ai' ? 'barReasonAi' : 'barReason', reason);
   }
 
@@ -270,6 +470,7 @@
       reason: el.getAttribute(ATTR_REASON) || '',
       source: el.getAttribute(ATTR_SOURCE) || 'keyword',
       category: el.getAttribute(ATTR_CATEGORY) || undefined,
+      media: el.getAttribute(ATTR_MEDIA) || undefined,
     };
   }
 
@@ -362,6 +563,7 @@
     el.setAttribute(ATTR_REASON, result.reason || '');
     el.setAttribute(ATTR_SOURCE, result.source || 'keyword');
     setOrRemoveAttribute(el, ATTR_CATEGORY, result.category);
+    setOrRemoveAttribute(el, ATTR_MEDIA, result.media);
     el.classList.add(CLASS_HIDDEN);
     const current = hiddenSource(el);
     if (current !== previous) {
@@ -377,16 +579,19 @@
     el.removeAttribute(ATTR_REASON);
     el.removeAttribute(ATTR_SOURCE);
     el.removeAttribute(ATTR_CATEGORY);
+    el.removeAttribute(ATTR_MEDIA);
     el.classList.remove(CLASS_HIDDEN);
   }
 
   function reveal(el) {
     const source = hiddenSource(el);
-    const text = state.hiddenTexts.get(el);
+    const item = hiddenByImage(el) ? state.hiddenItems.get(el) : { text: (state.hiddenItems.get(el) || {}).text };
     el.setAttribute(ATTR_REVEALED, 'true');
     unhide(el);
     // "Show anyway" usually means a false positive — worth marking in the log.
-    if (source && text) logEvent(Config.MSG.LOG_REVEALED, { source, text });
+    if (source && item && (item.text || item.image)) {
+      logEvent(Config.MSG.LOG_REVEALED, { source, text: item.text || '', image: item.image });
+    }
   }
 
   /** If the page rebuilt the inside of a hidden container and removed the bar — insert it again. */
@@ -562,6 +767,7 @@
     state.settings = settings;
     if (previous && previous.language !== settings.language) updateLanguage(settings.language);
     state.evaluator = buildEvaluator(settings);
+    applyImageSettings(settings);
     if (!settings.enabled) {
       state.enabled = false;
       stop();
@@ -585,6 +791,9 @@
   /** After the extension is reloaded, the old content script loses API access — shut it down then. */
   function teardown() {
     state.alive = false;
+    state.images.enabled = false;
+    if (state.images.observer) state.images.observer.disconnect();
+    clearTimeout(state.images.retryTimer);
     if (state.observer) {
       state.observer.disconnect();
       state.observer = null;
@@ -618,6 +827,10 @@
       fallback: result.fallback === true,
       text,
     };
+    if (result.media === 'image') {
+      entry.media = 'image';
+      entry.image = result.image;
+    }
     if (result.details) entry.details = result.details;
     logEvent(Config.MSG.LOG_HIDDEN, entry);
   }

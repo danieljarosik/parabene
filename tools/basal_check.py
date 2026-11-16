@@ -7,6 +7,7 @@ text in one request. ParaBene's "basal-serve (/v1/basal)" request format uses it
 Request: POST <url>/v1/basal (alias of /v1/systemone)
   {"state": "<text>",                       # the text the questions are about
    "lang": "pl",                            # optional: "pl" | "en", the prompt language
+   "media": [{"type": "image", "data": "<base64>"}],  # optional: basal-omni models with --media on
    "questions": {"<name>": {
        "type": "choice" | "noul" | "score" | "multi" | ...,
        "instructions": "<the question>",
@@ -23,9 +24,11 @@ Response: {"model": "...", "answers": {"<name>": {
 Errors: 422 invalid request, 503 starting / overloaded / out of memory, 401/403 API key; body {"error": ...}.
 
 Usage: python3 tools/basal_check.py [--url http://192.168.1.170:8010] [--text "..."]
+       python3 tools/basal_check.py --url http://localhost:8011 --image photo.jpg   # ParaBene's picture question
 Reuse: from basal_check import BasalClient, choice, yes_no
 """
 import argparse
+import base64
 import json
 import sys
 import time
@@ -104,6 +107,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--text", default=SAMPLE)
+    parser.add_argument("--image", help="a picture file: asks ParaBene's picture question (basal-omni, --media on)")
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
 
@@ -111,7 +115,22 @@ def main():
     try:
         for model in client.models():
             print(f"model: {model['name']} (released {model.get('release_date', '?')}, "
-                  f"certified max_error: {model.get('certified') or 'none'})")
+                  f"certified max_error: {model.get('certified') or 'none'}, media: {model.get('media') or 'none'})")
+        if args.image:
+            with open(args.image, "rb") as f:
+                media = [{"type": "image", "data": base64.b64encode(f.read()).decode("ascii")}]
+            # The same question as src/evaluators.js (basalImageRequest) with the default topics.
+            answers, reply, ms = client.decide("", {"topic": choice("Co przedstawia obraz?", {
+                "accident": "wypadek, katastrofę, pożar lub klęskę żywiołową",
+                "violence": "przemoc, broń, walkę zbrojną lub zniszczenia wojenne",
+                "death": "śmierć, zwłoki, krew lub rannych ludzi",
+                "profanity": "wulgarny gest, nagość lub obsceniczne treści",
+                "none": "coś innego, neutralnego lub pozytywnego",
+            }, option_keys="hide")}, media=media)
+            probs = answers["topic"]["probabilities"]
+            print(f"\nround trip: {ms:.0f} ms, hide score: {1 - probs['none']:.2f} (hidden at >= 0.5 by default)")
+            print("  " + ", ".join(f"{k}={p:.2f}" for k, p in probs.items()))
+            return 0
         questions = {
             # Binary assessment as a two-option choice: a bare noul question scores this text p(true) ≈ 0.3.
             "tragedy": choice("Co opisuje tekst?", {
