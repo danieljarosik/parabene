@@ -13,6 +13,7 @@
   --error: #c2462f;
   --error-soft: #fdecea;
   --ai: #7a5cc2;
+  --ai-image: #2f8f9d;
   --radius: 14px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -235,6 +236,10 @@ body {
 
 .source--ai::before {
   background: var(--ai);
+}
+
+.source--image::before {
+  background: var(--ai-image);
 }
 
 .source b {

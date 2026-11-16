@@ -546,8 +546,8 @@
     }
   },
   "barReasonAi": {
-    "message": "(powód: $reason$, AI)",
-    "description": "Reason for hiding given by the local AI model, shown in the bar.",
+    "message": "(powód: $reason$, AI – tekst)",
+    "description": "Reason for hiding given by the AI model after judging the text of the content, shown in the bar.",
     "placeholders": {
       "reason": {
         "content": "$1",
@@ -605,9 +605,13 @@
     "message": "Słowa kluczowe:",
     "description": "Label of the number of items hidden by keywords on the current page (the number follows)."
   },
-  "sourceAi": {
-    "message": "Model AI:",
-    "description": "Label of the number of items hidden by the local AI model on the current page (the number follows)."
+  "sourceAiText": {
+    "message": "AI (tekst):",
+    "description": "Label of the number of items hidden by the AI text model on the current page (the number follows)."
+  },
+  "sourceAiImage": {
+    "message": "AI (grafika):",
+    "description": "Label of the number of items hidden by the AI image model (judging a picture) on the current page (the number follows)."
   },
   "logTitle": {
     "message": "Dziennik ukrytych treści",
@@ -642,19 +646,23 @@
     "description": "Shown on the clear link after the first click; a second click deletes the log."
   },
   "logSummary": {
-    "message": "Słowa kluczowe: $keyword$ · AI: $ai$ · pokazane mimo wszystko: $revealed$.",
-    "description": "Summary of the log: entries hidden by keywords, by the AI model, and how many the user revealed with 'Show anyway'.",
+    "message": "Słowa kluczowe: $keyword$ · AI (tekst): $aitext$ · AI (grafika): $aiimage$ · pokazane mimo wszystko: $revealed$.",
+    "description": "Summary of the log: entries hidden by keywords, by the AI text model, by the AI image model, and how many the user revealed with 'Show anyway'.",
     "placeholders": {
       "keyword": {
         "content": "$1",
         "example": "30"
       },
-      "ai": {
+      "aitext": {
         "content": "$2",
         "example": "12"
       },
-      "revealed": {
+      "aiimage": {
         "content": "$3",
+        "example": "4"
+      },
+      "revealed": {
+        "content": "$4",
         "example": "3"
       }
     }

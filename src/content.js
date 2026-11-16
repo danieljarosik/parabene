@@ -89,7 +89,7 @@
     fullScanPending: false,
     timer: 0,
     firstQueuedAt: 0,
-    hidden: { keyword: 0, ai: 0 },
+    hidden: { keyword: 0, aiText: 0, aiImage: 0 },
     hiddenItems: new WeakMap(),
     lastHref: location.href,
     textLengths: new WeakMap(),
@@ -539,21 +539,31 @@
     return el.getAttribute(ATTR_SOURCE) === 'ai' ? 'ai' : 'keyword';
   }
 
-  function countHidden(source, delta) {
-    if (!source) return;
-    state.hidden[source] = Math.max(0, state.hidden[source] + delta);
+  /**
+   * Counter bucket of a hidden container: "keyword", "aiText" (text model) or "aiImage"
+   * (image model); null when it is not hidden.
+   */
+  function hiddenKind(el) {
+    const source = hiddenSource(el);
+    if (source !== 'ai') return source;
+    return el.getAttribute(ATTR_MEDIA) === 'image' ? 'aiImage' : 'aiText';
+  }
+
+  function countHidden(kind, delta) {
+    if (!kind) return;
+    state.hidden[kind] = Math.max(0, state.hidden[kind] + delta);
     scheduleStats();
   }
 
   /** Recounts hidden containers from the DOM (after in-page navigation). */
   function recountHidden() {
-    state.hidden = { keyword: 0, ai: 0 };
-    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) state.hidden[hiddenSource(el)] += 1;
+    state.hidden = { keyword: 0, aiText: 0, aiImage: 0 };
+    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) state.hidden[hiddenKind(el)] += 1;
     scheduleStats();
   }
 
   function hide(el, result) {
-    const previous = hiddenSource(el);
+    const previous = hiddenKind(el);
     let bar = directBar(el);
     if (!bar) {
       bar = createBar(el);
@@ -565,7 +575,7 @@
     setOrRemoveAttribute(el, ATTR_CATEGORY, result.category);
     setOrRemoveAttribute(el, ATTR_MEDIA, result.media);
     el.classList.add(CLASS_HIDDEN);
-    const current = hiddenSource(el);
+    const current = hiddenKind(el);
     if (current !== previous) {
       countHidden(previous, -1);
       countHidden(current, 1);
@@ -573,7 +583,7 @@
   }
 
   function unhide(el) {
-    countHidden(hiddenSource(el), -1);
+    countHidden(hiddenKind(el), -1);
     const bar = directBar(el);
     if (bar) bar.remove();
     el.removeAttribute(ATTR_REASON);
@@ -612,7 +622,7 @@
   function unhideAll() {
     for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) unhide(el);
     for (const bar of document.querySelectorAll(`.${CLASS_BAR}`)) bar.remove();
-    state.hidden = { keyword: 0, ai: 0 };
+    state.hidden = { keyword: 0, aiText: 0, aiImage: 0 };
     scheduleStats();
   }
 
@@ -836,8 +846,8 @@
   }
 
   function currentStats() {
-    const { keyword, ai } = state.enabled ? state.hidden : { keyword: 0, ai: 0 };
-    return { hidden: keyword + ai, bySource: { keyword, ai } };
+    const { keyword, aiText, aiImage } = state.enabled ? state.hidden : { keyword: 0, aiText: 0, aiImage: 0 };
+    return { hidden: keyword + aiText + aiImage, bySource: { keyword, aiText, aiImage } };
   }
 
   function scheduleStats() {

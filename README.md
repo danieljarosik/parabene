@@ -45,12 +45,12 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | Element | What it does |
 | --- | --- |
 | **ON/OFF** switch | Instantly enables or disables the filter in all tabs. When disabled, hidden content comes back. |
-| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*) and **AI model** (*Model AI*). Content hidden by keywords while the AI server is unavailable counts as keywords. |
+| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI server is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
 | **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
-| **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords or AI); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
+| **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -405,7 +405,7 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 
 | Field | Meaning |
 | --- | --- |
-| `source` | `keyword` — hidden by a phrase from the list; `ai` — hidden by the AI model. |
+| `source` | `keyword` — hidden by a phrase from the list; `ai` — hidden by the AI model (the text model, or the image model when `media` is `"image"`). |
 | `mode` | `keywords` (AI off), `both` or `ai` (`aiMode`) at the time of hiding. |
 | `reason` | The matched phrase (keywords) or the model's own reason (simple protocol). |
 | `category` | Category id, e.g. `profanity` for a profane phrase or the basal topic. |

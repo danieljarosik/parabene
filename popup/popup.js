@@ -14,7 +14,8 @@
     statHint: document.getElementById('stat-hint'),
     statSplit: document.getElementById('stat-split'),
     statKeyword: document.getElementById('stat-keyword'),
-    statAi: document.getElementById('stat-ai'),
+    statAiText: document.getElementById('stat-ai-text'),
+    statAiImage: document.getElementById('stat-ai-image'),
     keywordForm: document.getElementById('keyword-form'),
     keywordInput: document.getElementById('keyword-input'),
     keywordFeedback: document.getElementById('keyword-feedback'),
@@ -178,7 +179,7 @@
     }
   }
 
-  /** `value`: {hidden, bySource: {keyword, ai}} from the content script, or null when unknown. */
+  /** `value`: {hidden, bySource: {keyword, aiText, aiImage}} from the content script, or null when unknown. */
   function setStats(value) {
     stats = value && Number.isFinite(value.hidden) ? value : null;
     renderStats();
@@ -190,7 +191,8 @@
     els.statSplit.hidden = !bySource || stats.hidden === 0;
     if (bySource) {
       els.statKeyword.textContent = i18n.formatNumber(bySource.keyword || 0);
-      els.statAi.textContent = i18n.formatNumber(bySource.ai || 0);
+      els.statAiText.textContent = i18n.formatNumber(bySource.aiText || 0);
+      els.statAiImage.textContent = i18n.formatNumber(bySource.aiImage || 0);
     }
   }
 
@@ -399,11 +401,13 @@
       els.logStatus.textContent = t(settings.logEnabled ? 'logEmpty' : 'logOff');
       return;
     }
-    const ai = logEntries.filter((entry) => entry.source === 'ai').length;
+    const ai = logEntries.filter((entry) => entry.source === 'ai');
+    const aiImage = ai.filter((entry) => entry.media === 'image').length;
     const revealed = logEntries.filter((entry) => entry.revealed).length;
     els.logStatus.textContent = t('logSummary', [
-      i18n.formatNumber(total - ai),
-      i18n.formatNumber(ai),
+      i18n.formatNumber(total - ai.length),
+      i18n.formatNumber(ai.length - aiImage),
+      i18n.formatNumber(aiImage),
       i18n.formatNumber(revealed),
     ]);
   }
