@@ -52,7 +52,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string') return false;
 
   if (message.type === Config.MSG.CLASSIFY) {
-    classify(message.text).then(sendResponse);
+    classify(message.text, message.test === true).then(sendResponse);
     return true;
   }
 
@@ -74,6 +74,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === Config.MSG.LOG_HIDDEN || message.type === Config.MSG.LOG_REVEALED) {
     queueLog(message.type, message.entry);
     return false;
+  }
+
+  if (message.type === Config.MSG.LOG_CLEAR) {
+    clearLog().then(() => sendResponse({ ok: true }), (err) => sendResponse({ ok: false, error: describeError(err) }));
+    return true;
   }
 
   if (message.type === Config.MSG.LEARN_PENDING && sender.tab && sender.tab.id >= 0) {
@@ -120,11 +125,14 @@ async function getMessages(locale) {
 /**
  * Errors are returned as { code, detail } — the popup translates the code
  * into the UI language (messages "aiError_<code>").
+ * Requests still queued in a tab when the filter or the model was switched off are refused
+ * ("cancelled"), so no text is sent after that; the panel's connection test (`test`) is always sent.
  */
-async function classify(text) {
+async function classify(text, test = false) {
   let endpoint = '';
   try {
-    const { aiEndpoint, aiProtocol, aiSensitivity, aiTopics } = await Config.load();
+    const { enabled, aiEnabled, aiEndpoint, aiProtocol, aiSensitivity, aiTopics } = await Config.load();
+    if (!test && !(enabled && aiEnabled)) throw Evaluators.cancelledError();
     if (!Config.isValidEndpoint(aiEndpoint)) throw Evaluators.codedError('invalidEndpoint', 'invalid endpoint URL');
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
     const basal = aiProtocol === 'basal';
@@ -178,6 +186,9 @@ async function classifyImage(url) {
     let reply = imageCache.get(key);
     if (!reply) {
       reply = await imageLimiter.run(async () => {
+        // The request may have waited in the queue: no picture is sent once image evaluation is off.
+        const current = await Config.load();
+        if (!(current.enabled && current.aiImagesEnabled)) throw Evaluators.cancelledError();
         const image = await loadImage(url);
         return Evaluators.fetchTransport({
           endpoint,
@@ -421,6 +432,19 @@ function flushLog() {
       await chrome.storage.local.set({ [Config.LOG_STORAGE_KEY]: entries.slice(-Config.LOG_MAX_ENTRIES) });
     })
     .catch((err) => console.warn('[ParaBene] Failed to write the log:', err));
+}
+
+/**
+ * "Clear log" from the panel. It runs in the same queue as the writes, so a write that has
+ * already read the old entries cannot put them back; entries not yet written are dropped too.
+ */
+function clearLog() {
+  clearTimeout(logTimer);
+  logTimer = 0;
+  logQueue.length = 0;
+  const cleared = logWrite.then(() => chrome.storage.local.remove(Config.LOG_STORAGE_KEY));
+  logWrite = cleared.catch((err) => console.warn('[ParaBene] Failed to clear the log:', err));
+  return cleared;
 }
 
 /** Keeps only the known fields, with sane types and lengths. */

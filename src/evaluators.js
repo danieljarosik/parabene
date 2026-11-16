@@ -31,6 +31,15 @@
     return err;
   }
 
+  /** Rejection of work dropped because the evaluator was replaced or switched off. */
+  function cancelledError() {
+    return codedError('cancelled', 'cancelled');
+  }
+
+  function isCancelled(err) {
+    return Boolean(err && err.code === 'cancelled');
+  }
+
   /** Base interface for content evaluation strategies. */
   class ContentEvaluator {
     /**
@@ -40,6 +49,9 @@
     async evaluate(text) {
       throw new Error(`${this.constructor.name}.evaluate(text) must be implemented by a subclass.`);
     }
+
+    /** Drops queued work (pending evaluations reject with code "cancelled"); the evaluator is not used again. */
+    cancel() {}
   }
 
   function escapeRegExp(value) {
@@ -109,11 +121,13 @@
       this.max = Math.max(1, max);
       this.active = 0;
       this.queue = [];
+      this.cancelled = false;
     }
 
     async run(task) {
+      if (this.cancelled) throw cancelledError();
       if (this.active >= this.max) {
-        await new Promise((resolve) => this.queue.push(resolve));
+        await new Promise((resolve, reject) => this.queue.push({ resolve, reject }));
       }
       this.active += 1;
       try {
@@ -121,8 +135,14 @@
       } finally {
         this.active -= 1;
         const next = this.queue.shift();
-        if (next) next();
+        if (next) next.resolve();
       }
+    }
+
+    /** Rejects the queued tasks and every later one; running tasks finish. */
+    cancel() {
+      this.cancelled = true;
+      for (const { reject } of this.queue.splice(0)) reject(cancelledError());
     }
   }
 
@@ -359,6 +379,10 @@
       if (this.cache.size > this.cacheSize) this.cache.delete(this.cache.keys().next().value);
       return result;
     }
+
+    cancel() {
+      this.limiter.cancel();
+    }
   }
 
   /**
@@ -380,11 +404,17 @@
         try {
           return await this.primary.evaluate(text);
         } catch (err) {
+          if (isCancelled(err)) throw err; // not a failure of the model — no fallback verdict
           this.retryAt = Date.now() + this.cooldownMs;
           if (this.onError) this.onError(err);
         }
       }
       return Object.assign(await this.fallback.evaluate(text), { fallback: true });
+    }
+
+    cancel() {
+      this.primary.cancel();
+      this.fallback.cancel();
     }
   }
 
@@ -405,6 +435,10 @@
         if (result.hide) return result;
       }
       return result;
+    }
+
+    cancel() {
+      for (const evaluator of this.evaluators) evaluator.cancel();
     }
   }
 
@@ -435,6 +469,8 @@
     FirstHitEvaluator,
     ConcurrencyLimiter,
     codedError,
+    cancelledError,
+    isCancelled,
     fetchTransport,
     BASAL_TOPICS,
     BASAL_CORE_TOPICS,

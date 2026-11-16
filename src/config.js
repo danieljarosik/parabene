@@ -172,6 +172,7 @@
     GET_MESSAGES: 'parabene:getMessages',
     LOG_HIDDEN: 'parabene:logHidden',
     LOG_REVEALED: 'parabene:logRevealed',
+    LOG_CLEAR: 'parabene:logClear',
     LEARN_PENDING: 'parabene:learnPending',
     LEARN_COMMIT: 'parabene:learnCommit',
     LEARN_CANCEL: 'parabene:learnCancel',

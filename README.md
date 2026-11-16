@@ -76,7 +76,7 @@ On first run, a default list of Polish phrases is loaded (accidents, death, viol
 
 **News portals and other sites** — `<article>` / `role="article"` elements and tiles built around an `h1`–`h3` heading with a link (the algorithm climbs from the heading to the largest ancestor that is still a single tile). Safeguards reject `body`, `main`, the feed, navigation, the page header and footer, as well as containers holding many articles or too much text, so the whole page never gets hidden.
 
-**Dynamically loaded content** (infinite scroll) is handled by a `MutationObserver` with a 200 ms debounce (and a 1 s maximum wait under a continuous stream of changes). Checked nodes get the `data-parabene-checked="true"` attribute. If their text changes (e.g. Facebook first renders an empty post skeleton), they are evaluated again.
+**Dynamically loaded content** (infinite scroll) is handled by a `MutationObserver` with a 200 ms debounce (and a 1 s maximum wait under a continuous stream of changes). Checked nodes get the `data-parabene-checked="true"` attribute. If their text changes (e.g. Facebook first renders an empty post skeleton) or part of it is removed, they are evaluated again; a picture added to a post whose text did not change is judged too (with image evaluation on). Text split by inline formatting (`<strong>wypa</strong>dek`) is read as one word. **Show anyway** applies to the content you revealed: if the page reuses the element for different content, it is filtered again (small changes such as reaction counters or "See more" keep it revealed). Turning the filter or the AI model off drops the requests still waiting in the queue — no text or picture is sent after that.
 
 **Hiding** never uses `.remove()` — that would break infinite scroll and page scripts. The container gets the `parabene-hidden` class, and CSS hides its children and shows the placeholder bar inserted as the first child.
 
@@ -124,7 +124,7 @@ class ContentEvaluator {
 | Class | Role |
 | --- | --- |
 | `KeywordEvaluator` | Fast local keyword matching (a single compiled regular expression with the `u` flag). |
-| `LocalAIEvaluator` | Sends a `POST` to the local endpoint. Limits concurrent requests (3), caches results and caps text length (2000 characters). |
+| `LocalAIEvaluator` | Sends a `POST` to the local endpoint. Limits concurrent requests (3), caches results and caps text length (2000 characters). `cancel()` drops the queued requests when the settings change. |
 | `FallbackEvaluator` | Tries the AI model. On error (no server, timeout, invalid response) it falls back to `KeywordEvaluator` and skips the failing server for 30 s. |
 | `FirstHitEvaluator` | Asks evaluators in order and stops at the first one that hides the text. Used by the default *Keywords + AI* mode: a keyword match hides at once, without a request to the model. |
 

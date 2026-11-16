@@ -58,6 +58,13 @@
   const LEARN_ROOT_MARGIN = '1000px 0px';
   /** Errors that concern one picture only (it is skipped); anything else pauses image evaluation. */
   const IMAGE_SKIP_ERRORS = new Set(['imageFetch', 'imageDecode', 'imageTooSmall']);
+  /**
+   * Revealed content stays revealed while the container shows the same content. Pages change it a
+   * little on their own (reaction counters, "See more"), so it counts as the same while this share of
+   * the word stems of the shorter text is in the other one; texts with fewer stems must be identical.
+   */
+  const REVEAL_SAME_OVERLAP = 0.6;
+  const REVEAL_MIN_STEMS = 4;
 
   const HEADING_SEL = 'h1, h2, h3';
   const HEADING_LINK_SEL = 'h1 a[href], h2 a[href], h3 a[href], a[href] h1, a[href] h2, a[href] h3';
@@ -86,6 +93,15 @@
     '[contenteditable]:not([contenteditable="false"])',
     `.${CLASS_BAR}`,
   ].join(', ');
+  /**
+   * Inline formatting: text split by these elements is one word (<strong>wypa</strong>dek → "wypadek").
+   * Any other element boundary separates words — <span> and <a> included, as pages (Facebook) often
+   * lay them out as blocks with no whitespace between them.
+   */
+  const INLINE_TEXT_TAGS = new Set([
+    'abbr', 'b', 'bdi', 'bdo', 'big', 'cite', 'code', 'del', 'dfn', 'em', 'font', 'i', 'ins',
+    'kbd', 'mark', 'q', 's', 'samp', 'small', 'strike', 'strong', 'sub', 'sup', 'tt', 'u', 'var', 'wbr',
+  ]);
 
   const state = {
     enabled: false,
@@ -96,13 +112,18 @@
     generation: 0,
     observer: null,
     pendingRoots: new Set(),
+    /** Parents the page removed nodes from: their containers are judged again. */
+    removalRoots: new Set(),
     fullScanPending: false,
     timer: 0,
     firstQueuedAt: 0,
     hidden: emptyCounts(),
     hiddenItems: new WeakMap(),
     lastHref: location.href,
-    textLengths: new WeakMap(),
+    /** Container → the text it was last judged on. */
+    texts: new WeakMap(),
+    /** Revealed container → { text, image? } it showed when revealed ("Show anyway" applies to that content only). */
+    revealed: new WeakMap(),
     inFlight: new WeakSet(),
     dirty: new WeakSet(),
     statsTimer: 0,
@@ -116,6 +137,8 @@
       retryAt: 0,
       retryTimer: 0,
       checked: new WeakMap(),
+      /** Container → the addresses of its own pictures, to notice pictures added later. */
+      signatures: new WeakMap(),
       listening: new WeakSet(),
     },
     learning: {
@@ -229,23 +252,38 @@
 
   /** Container text, excluding nested containers (e.g. comments) and editable fields. */
   function ownText(container) {
-    const parts = [];
-    let length = 0;
+    let text = '';
+    let previous = null;
+    // Set when the walk enters an element other than inline formatting (also a skipped one, e.g. a
+    // nested container or <br>) — the next text node starts a new word.
+    let boundary = false;
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+        if (!INLINE_TEXT_TAGS.has(node.localName)) boundary = true;
         if (node.hasAttribute(ATTR_CANDIDATE) || node.matches(IGNORED_TEXT_SEL)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_SKIP;
       },
     });
     while (walker.nextNode()) {
-      const value = walker.currentNode.nodeValue;
+      const node = walker.currentNode;
+      const value = node.nodeValue;
       if (!value) continue;
-      parts.push(value);
-      length += value.length;
-      if (length >= MAX_TEXT_LENGTH) break;
+      if (previous && (boundary || leavesBlock(previous, node, container))) text += ' ';
+      text += value;
+      previous = node;
+      boundary = false;
+      if (text.length >= MAX_TEXT_LENGTH) break;
     }
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /** True when an element other than inline formatting ends between `previous` and the text node `next`. */
+  function leavesBlock(previous, next, container) {
+    for (let el = previous.parentNode; el && el !== container && !el.contains(next); el = el.parentNode) {
+      if (!INLINE_TEXT_TAGS.has(el.localName)) return true;
+    }
+    return false;
   }
 
   /* ------------------------------------------------------------------ */
@@ -253,15 +291,23 @@
   /* ------------------------------------------------------------------ */
 
   async function evaluateCandidate(el) {
-    if (!state.enabled || !el.isConnected || el.hasAttribute(ATTR_REVEALED)) return;
+    if (!state.enabled || !el.isConnected) return;
     if (state.inFlight.has(el)) {
       state.dirty.add(el);
       return;
     }
 
     const text = ownText(el);
-    if (el.hasAttribute(ATTR_CHECKED) && state.textLengths.get(el) === text.length) return;
-    state.textLengths.set(el, text.length);
+    if (el.hasAttribute(ATTR_REVEALED)) {
+      if (!revealExpired(el, text)) return;
+      endReveal(el);
+    }
+    if (el.hasAttribute(ATTR_CHECKED) && state.texts.get(el) === text) {
+      // Same text: only pictures added since may still need judging.
+      if (trackImages(el)) queueImageCheck(el);
+      return;
+    }
+    state.texts.set(el, text);
     el.setAttribute(ATTR_CHECKED, 'true');
 
     if (text.length < MIN_TEXT_LENGTH) {
@@ -279,7 +325,8 @@
     try {
       result = await evaluator.evaluate(text);
     } catch (err) {
-      console.warn('[ParaBene] Content evaluation failed:', err);
+      // "cancelled": the evaluator was replaced (settings changed) — the page is judged again anyway.
+      if (!Evaluators.isCancelled(err)) console.warn('[ParaBene] Content evaluation failed:', err);
     } finally {
       state.inFlight.delete(el);
     }
@@ -311,6 +358,46 @@
     if (rerun) evaluateCandidate(el);
   }
 
+  /** True when two texts are the same content, allowing the small changes pages make on their own. */
+  function sameContent(a, b) {
+    if (a === b) return true;
+    const stemsA = new Set(Learning.stems(a).keys());
+    const stemsB = new Set(Learning.stems(b).keys());
+    const smaller = Math.min(stemsA.size, stemsB.size);
+    if (smaller < REVEAL_MIN_STEMS) return false;
+    let shared = 0;
+    for (const stem of stemsA) if (stemsB.has(stem)) shared += 1;
+    return shared / smaller >= REVEAL_SAME_OVERLAP;
+  }
+
+  /**
+   * True when a revealed container no longer shows the content the user revealed: its text is
+   * different, or (revealed because of a picture) that picture is gone — e.g. the page reused the
+   * element for another post.
+   */
+  function revealExpired(el, text = ownText(el)) {
+    const revealed = state.revealed.get(el);
+    if (!revealed) {
+      // Revealed before this script started (the extension was reloaded): keep it for this content.
+      state.revealed.set(el, { text });
+      return false;
+    }
+    if (!sameContent(revealed.text, text)) return true;
+    if (!revealed.image) return false;
+    return !ownImages(el).some((img) => img.currentSrc === revealed.image || img.src === revealed.image);
+  }
+
+  /**
+   * The container shows other content than the user revealed: it is filtered again. A pending
+   * example keeps the revealed content and is confirmed when the tab leaves the page.
+   */
+  function endReveal(el) {
+    state.revealed.delete(el);
+    el.removeAttribute(ATTR_REVEALED);
+    el.removeAttribute(ATTR_CHECKED);
+    if (barKind(el) === 'revealed') unhide(el);
+  }
+
   /* ------------------------------------------------------------------ */
   /* Image evaluation (optional, multimodal model via the service worker) */
   /* ------------------------------------------------------------------ */
@@ -336,8 +423,14 @@
   /** Puts a container in the image queue; it is judged once it comes near the viewport. */
   function queueImageCheck(el) {
     const images = state.images;
-    if (!images.enabled || !images.observer || !el.isConnected || el.hasAttribute(ATTR_REVEALED)) return;
+    if (!images.enabled || !images.observer || !el.isConnected) return;
+    if (el.hasAttribute(ATTR_REVEALED)) {
+      // Judged again only once it shows other content (e.g. a picture loaded in place of the revealed one).
+      if (revealExpired(el)) evaluateCandidate(el);
+      return;
+    }
     if (el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el)) return; // already hidden by its text
+    trackImages(el);
     images.pending.add(el);
     images.observer.observe(el); // reports the current intersection right away
   }
@@ -379,13 +472,39 @@
     });
   }
 
+  /** The pictures of the container itself (not of nested containers such as comments). */
+  function ownImages(el) {
+    const own = [];
+    for (const img of el.querySelectorAll('img')) {
+      if (img.closest(`[${ATTR_CANDIDATE}]`) === el && !img.closest(`.${CLASS_BAR}`)) own.push(img);
+    }
+    return own;
+  }
+
+  /**
+   * Listens for the (re)loading of the container's own pictures and tells whether the set of
+   * pictures changed since the last call — e.g. a picture added to a post whose text did not change.
+   */
+  function trackImages(el) {
+    const images = state.images;
+    if (!images.enabled) return false;
+    const sources = [];
+    for (const img of ownImages(el)) {
+      listenForLoad(img);
+      sources.push(img.currentSrc || img.src || '');
+    }
+    const signature = sources.join('\n');
+    const changed = images.signatures.get(el) !== signature;
+    images.signatures.set(el, signature);
+    return changed;
+  }
+
   /** The largest pictures of the container itself (not of nested containers such as comments). */
   function pickImages(el) {
     // Inside a hidden container pictures are not rendered: only their natural size counts then.
     const rendered = !el.classList.contains(CLASS_HIDDEN);
     const found = [];
-    for (const img of el.querySelectorAll('img')) {
-      if (img.closest(`[${ATTR_CANDIDATE}]`) !== el || img.closest(`.${CLASS_BAR}`)) continue;
+    for (const img of ownImages(el)) {
       listenForLoad(img);
       const src = img.currentSrc || img.src || '';
       if (!/^(https?:|data:image\/)/i.test(src) || /^data:image\/svg|\.svg(?:[?#]|$)/i.test(src)) continue;
@@ -407,7 +526,9 @@
    * Throws when the image server is unavailable.
    */
   async function judgeImage(img, src) {
-    const known = state.images.checked.get(img);
+    // New settings replace the map: a reply that arrives later must not land in the new one.
+    const checked = state.images.checked;
+    const known = checked.get(img);
     if (known && known.src === src) return known.result;
     const response = await chrome.runtime.sendMessage({ type: Config.MSG.CLASSIFY_IMAGE, url: src });
     let result = null;
@@ -427,7 +548,7 @@
       if (!skip) throw Evaluators.codedError(error.code, `${error.code}: ${error.detail || ''}`, error.detail);
       console.debug('[ParaBene] Picture skipped:', error.code, error.detail || '', src.slice(0, 200));
     }
-    state.images.checked.set(img, { src, result });
+    checked.set(img, { src, result });
     return result;
   }
 
@@ -435,19 +556,29 @@
     const images = state.images;
     const generation = state.generation;
     images.active += 1;
-    let verdict = null;
+    let verdict = null; // the first picture to hide that no learned example lets through
+    let passed = null; // { result, match } of the first picture to hide that an example lets through
+    let text = null;
     let failed = false;
+    let cancelled = false;
     try {
       for (const { img, src } of pickImages(el)) {
         const result = await judgeImage(img, src);
-        if (result && result.hide) {
+        if (generation !== state.generation) break; // new settings: this check is discarded
+        if (!result || !result.hide) continue;
+        if (text === null) text = ownText(el);
+        const match = learnedMatch({ text }, result);
+        if (!match) {
           verdict = result;
           break;
         }
+        // Let through by an example — the remaining pictures are still judged.
+        if (!passed) passed = { result, match };
       }
     } catch (err) {
       failed = true;
-      if (generation === state.generation) {
+      cancelled = Evaluators.isCancelled(err); // image evaluation was switched off meanwhile
+      if (generation === state.generation && !cancelled) {
         images.retryAt = Date.now() + IMAGE_COOLDOWN_MS;
         console.info('[ParaBene] Image model unavailable, pausing image checks for 30 s:', err.message);
       }
@@ -457,23 +588,20 @@
 
     const current = generation === state.generation && state.enabled && images.enabled;
     if (current && el.isConnected && !el.hasAttribute(ATTR_REVEALED)) {
+      const textHidden = el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el);
       if (failed) {
-        queueImageCheck(el); // retried after the pause
+        if (!cancelled) queueImageCheck(el); // retried after the pause
+      } else if (textHidden) {
+        // Hidden by its text in the meantime — the pictures do not matter.
       } else if (verdict) {
-        const textHidden = el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el);
-        if (!textHidden) {
-          const known = state.hiddenItems.get(el);
-          const isNew = !hiddenByImage(el) || !known || known.image !== verdict.image;
-          const text = ownText(el);
-          const match = learnedMatch({ text }, verdict);
-          if (match) {
-            pass(el, verdict, match);
-          } else {
-            hide(el, verdict);
-            if (isNew) logHidden(text, verdict);
-          }
-          state.hiddenItems.set(el, { text, image: verdict.image });
-        }
+        const known = state.hiddenItems.get(el);
+        const isNew = !hiddenByImage(el) || !known || known.image !== verdict.image;
+        hide(el, verdict);
+        if (isNew) logHidden(text, verdict);
+        state.hiddenItems.set(el, { text, image: verdict.image });
+      } else if (passed) {
+        pass(el, passed.result, passed.match);
+        state.hiddenItems.set(el, { text, image: passed.result.image });
       } else if (heldByImage(el)) {
         unhide(el);
       }
@@ -490,6 +618,7 @@
     images.pending.clear();
     images.visible.clear();
     images.checked = new WeakMap();
+    images.signatures = new WeakMap();
     images.retryAt = 0;
     images.enabled = settings.enabled && settings.aiImagesEnabled;
     if (images.enabled) {
@@ -630,14 +759,19 @@
     scheduleStats();
   }
 
-  /** Recounts hidden containers from the DOM (after in-page navigation). */
-  function recountHidden() {
-    state.hidden = emptyCounts();
+  /**
+   * Recounts hidden containers from the DOM — the page may have removed (or put back) some of them.
+   * `force`: report the stats even when they did not change (after in-page navigation).
+   */
+  function recountHidden(force) {
+    const counts = emptyCounts();
     for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}, .${CLASS_SHOWN}`)) {
       const kind = countedKind(el);
-      if (kind) state.hidden[kind] += 1;
+      if (kind) counts[kind] += 1;
     }
-    scheduleStats();
+    const changed = Object.keys(counts).some((key) => counts[key] !== state.hidden[key]);
+    state.hidden = counts;
+    if (changed || force) scheduleStats();
   }
 
   /**
@@ -698,6 +832,7 @@
     const known = state.hiddenItems.get(el) || {};
     const item = hiddenByImage(el) ? known : { text: known.text };
     el.setAttribute(ATTR_REVEALED, 'true');
+    state.revealed.set(el, { text: ownText(el), image: item.image });
     const id = learnable(item, result) ? newLearnId() : '';
     if (id) {
       mark(el, result, 'revealed', id);
@@ -724,6 +859,7 @@
     if (barKind(el) === 'revealed') {
       if (learn) sendLearn(Config.MSG.LEARN_CANCEL, { id: learn });
       el.removeAttribute(ATTR_REVEALED);
+      state.revealed.delete(el);
     } else {
       const ids = learn.split(' ').filter(Boolean);
       if (ids.length) sendLearn(Config.MSG.LEARN_FORGET, { ids });
@@ -849,7 +985,7 @@
 
   function resetChecks() {
     state.generation += 1;
-    state.textLengths = new WeakMap();
+    state.texts = new WeakMap();
     for (const el of document.querySelectorAll(`[${ATTR_CHECKED}]`)) el.removeAttribute(ATTR_CHECKED);
   }
 
@@ -888,19 +1024,21 @@
     state.firstQueuedAt = 0;
     if (!state.enabled || !state.alive) {
       state.pendingRoots.clear();
+      state.removalRoots.clear();
       state.fullScanPending = false;
       return;
     }
 
-    if (location.href !== state.lastHref) {
-      state.lastHref = location.href;
-      recountHidden();
-    }
+    const navigated = location.href !== state.lastHref;
+    state.lastHref = location.href;
+    recountHidden(navigated);
 
     const roots = state.fullScanPending
       ? [document.body || document.documentElement]
       : collapseRoots([...state.pendingRoots]);
+    const removals = [...state.removalRoots];
     state.pendingRoots.clear();
+    state.removalRoots.clear();
     state.fullScanPending = false;
 
     const candidates = new Set();
@@ -910,6 +1048,13 @@
       if (owner) candidates.add(owner);
       for (const candidate of adapter.findCandidates(root)) candidates.add(candidate);
       repairBar(root);
+    }
+    // Something was removed from these: only the container they are in can have changed.
+    for (const target of removals) {
+      if (!target.isConnected || target.closest(`.${CLASS_BAR}`)) continue;
+      const owner = target.closest(`[${ATTR_CANDIDATE}]`);
+      if (owner) candidates.add(owner);
+      repairBar(target);
     }
 
     // Mark all containers first so that ownText() skips nested ones.
@@ -929,6 +1074,16 @@
         } else if (node.nodeType === Node.TEXT_NODE) {
           queueRoot(node);
         }
+      }
+      // A removed fragment changes the text of its container; a removed container changes the counters.
+      for (const node of record.removedNodes) {
+        const element = node.nodeType === Node.ELEMENT_NODE;
+        if (element ? node.classList.contains(CLASS_BAR) : node.nodeType !== Node.TEXT_NODE) continue;
+        if (record.target.nodeType === Node.ELEMENT_NODE) {
+          state.removalRoots.add(record.target);
+          schedule();
+        }
+        break;
       }
     }
   }
@@ -951,6 +1106,7 @@
     state.timer = 0;
     state.firstQueuedAt = 0;
     state.pendingRoots.clear();
+    state.removalRoots.clear();
     state.fullScanPending = false;
     resetChecks();
     unhideAll();
@@ -997,6 +1153,8 @@
     const previous = state.settings;
     state.settings = settings;
     if (previous && previous.language !== settings.language) updateLanguage(settings.language);
+    // Requests still queued by the old evaluator are dropped — nothing is sent with old settings.
+    if (state.evaluator) state.evaluator.cancel();
     state.evaluator = buildEvaluator(settings);
     applyImageSettings(settings);
     applyLearningSettings(settings);
@@ -1023,6 +1181,7 @@
   /** After the extension is reloaded, the old content script loses API access — shut it down then. */
   function teardown() {
     state.alive = false;
+    if (state.evaluator) state.evaluator.cancel();
     state.images.enabled = false;
     if (state.images.observer) state.images.observer.disconnect();
     clearTimeout(state.images.retryTimer);

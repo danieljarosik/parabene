@@ -376,7 +376,7 @@
     els.aiTest.disabled = true;
     showFeedback(els.aiStatus, t('aiConnecting'), null);
     try {
-      const response = await chrome.runtime.sendMessage({ type: Config.MSG.CLASSIFY, text: t('aiTestText') });
+      const response = await chrome.runtime.sendMessage({ type: Config.MSG.CLASSIFY, text: t('aiTestText'), test: true });
       if (response && response.ok) {
         const { hide, category } = response.data;
         const categoryKey = category ? `category_${category}` : '';
@@ -481,7 +481,8 @@
     }
     clearTimeout(clearArmedTimer);
     clearArmedTimer = 0;
-    await chrome.storage.local.remove(Config.LOG_STORAGE_KEY);
+    // Through the service worker, which queues it after any log write in progress.
+    await chrome.runtime.sendMessage({ type: Config.MSG.LOG_CLEAR });
   }
 
   /* ---------------- Learning from revealed content ---------------- */
