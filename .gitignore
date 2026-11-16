@@ -1,0 +1,41 @@
+# System
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*~
+.directory
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Extension packages and keys
+*.zip
+*.crx
+*.pem
+*.xpi
+dist/
+build/
+
+# Tooling
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+*.tmp
+.env
+.env.*

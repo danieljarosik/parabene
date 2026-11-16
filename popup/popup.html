@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ParaBene</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <img class="header__logo" src="../icons/icon48.png" alt="" width="36" height="36" />
+        <div class="header__titles">
+          <h1>ParaBene</h1>
+          <p>Positive Web &amp; News Filter</p>
+        </div>
+        <label class="switch switch--main" title="Włącz lub wyłącz filtr">
+          <input type="checkbox" id="enabled" role="switch" aria-label="Filtr ParaBene" />
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          <span class="switch__state" id="enabled-state">ON</span>
+        </label>
+      </header>
+
+      <section class="card stat" aria-live="polite">
+        <div class="stat__number" id="hidden-count">–</div>
+        <div class="stat__text">
+          <strong>Ukryte na tej stronie</strong>
+          <span id="stat-hint">Sprawdzam bieżącą kartę…</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h2>Słowa kluczowe</h2>
+          <span class="count" id="keyword-count">0</span>
+        </div>
+        <form class="row" id="keyword-form" autocomplete="off">
+          <input
+            type="text"
+            id="keyword-input"
+            class="input"
+            placeholder="np. wypadek, katastrof"
+            maxlength="400"
+            aria-label="Nowe słowo kluczowe"
+          />
+          <button type="submit" class="btn btn--primary">Dodaj</button>
+        </form>
+        <p class="hint" id="keyword-feedback">
+          Wpisz rdzeń słowa, aby objąć odmiany (np. „tragedi” → tragedia, tragedii). Kilka fraz oddziel przecinkami.
+        </p>
+        <ul class="chips" id="keyword-list" aria-label="Aktywne frazy"></ul>
+        <p class="empty" id="keyword-empty" hidden>Lista jest pusta — nic nie zostanie ukryte.</p>
+        <button type="button" class="link" id="restore-defaults">Przywróć domyślne frazy</button>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h2>Silnik oceny</h2>
+        </div>
+
+        <div class="engine engine--on">
+          <div class="engine__text">
+            <strong>Słowa kluczowe</strong>
+            <span>Zawsze aktywne — także jako zapas dla modelu AI.</span>
+          </div>
+          <span class="pill">aktywny</span>
+        </div>
+
+        <div class="engine">
+          <div class="engine__text">
+            <strong>Lokalny model AI (localhost)</strong>
+            <span>Wysyła tekst wyłącznie na Twój lokalny serwer.</span>
+          </div>
+          <label class="switch" title="Lokalny model AI">
+            <input type="checkbox" id="ai-enabled" role="switch" aria-label="Lokalny model AI" />
+            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          </label>
+        </div>
+
+        <div class="ai" id="ai-settings">
+          <label class="ai__label" for="ai-endpoint">Adres endpointu</label>
+          <div class="row">
+            <input
+              type="url"
+              id="ai-endpoint"
+              class="input input--mono"
+              spellcheck="false"
+              placeholder="http://localhost:8000/classify"
+            />
+            <button type="button" class="btn" id="ai-test">Testuj</button>
+          </div>
+          <p class="hint" id="ai-status">Gdy model nie odpowiada, ParaBene automatycznie używa słów kluczowych.</p>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span id="version">v1.0.0</span>
+        <a href="https://github.com/danieljarosik/parabene" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </footer>
+    </main>
+
+    <script src="../src/config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
