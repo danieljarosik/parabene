@@ -488,3 +488,7 @@ python3 tools/check_locales.py
 ```
 
 After every code change, click the reload icon next to ParaBene in `chrome://extensions` and reload the tab you are testing. Content script logs are in the page's DevTools (prefix `[ParaBene]`). Open the service worker logs via the *service worker* link on the extension's card.
+
+## License
+
+[MIT](LICENSE) © 2026 Daniel Jarosik
