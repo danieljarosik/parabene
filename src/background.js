@@ -44,6 +44,13 @@ async function applyEnvFile() {
   const { settings, ignored } = Config.parseEnv(text);
   if (ignored.length) console.warn(`[ParaBene] ${Config.ENV_FILE}: ignored`, ignored);
   if (Object.keys(settings).length === 0) return;
+  if (settings.aiProtocol && !settings.aiEndpoint) {
+    // As in the panel: a protocol set alone also swaps an endpoint that is still a default one.
+    const { aiEndpoint } = await chrome.storage.local.get('aiEndpoint');
+    if (aiEndpoint === undefined || Object.values(Config.DEFAULT_ENDPOINTS).includes(aiEndpoint)) {
+      settings.aiEndpoint = Config.DEFAULT_ENDPOINTS[settings.aiProtocol];
+    }
+  }
   await chrome.storage.local.set(settings);
   console.info(`[ParaBene] Applied settings from ${Config.ENV_FILE}:`, Object.keys(settings));
 }
@@ -166,6 +173,8 @@ async function classify(text, test = false) {
 const imageLimiter = new Evaluators.ConcurrencyLimiter(Config.IMAGE_MAX_CONCURRENT);
 /** endpoint + topics + picture URL → the model's raw reply (the threshold is applied on every use). */
 const imageCache = new Map();
+/** The same key → Promise of the reply while the picture is being judged: asked by two tiles or tabs, it is one request. */
+const imageRequests = new Map();
 const IMAGE_CACHE_SIZE = 500;
 const IMAGE_FETCH_TIMEOUT_MS = 10000;
 
@@ -177,6 +186,8 @@ const IMAGE_FETCH_TIMEOUT_MS = 10000;
 async function classifyImage(url) {
   let endpoint = '';
   try {
+    // The content script sends only such addresses; nothing else is ever fetched from here.
+    if (!/^(https?:|data:image\/)/i.test(url)) throw Evaluators.codedError('imageFetch', 'unsupported picture address');
     const { aiImagesEndpoint, aiSensitivity, aiTopics } = await Config.load();
     if (!Config.isValidEndpoint(aiImagesEndpoint)) {
       throw Evaluators.codedError('invalidEndpoint', 'invalid image endpoint URL');
@@ -185,17 +196,24 @@ async function classifyImage(url) {
     const key = `${endpoint}\n${aiTopics.join(',')}\n${url}`;
     let reply = imageCache.get(key);
     if (!reply) {
-      reply = await imageLimiter.run(async () => {
-        // The request may have waited in the queue: no picture is sent once image evaluation is off.
-        const current = await Config.load();
-        if (!(current.enabled && current.aiImagesEnabled)) throw Evaluators.cancelledError();
-        const image = await loadImage(url);
-        return Evaluators.fetchTransport({
-          endpoint,
-          body: Evaluators.basalImageRequest(image, aiTopics),
-          timeoutMs: Config.IMAGE_TIMEOUT_MS,
-        });
-      });
+      let request = imageRequests.get(key);
+      if (!request) {
+        request = imageLimiter
+          .run(async () => {
+            // The request may have waited in the queue: no picture is sent once image evaluation is off.
+            const current = await Config.load();
+            if (!(current.enabled && current.aiImagesEnabled)) throw Evaluators.cancelledError();
+            const image = await loadImage(url);
+            return Evaluators.fetchTransport({
+              endpoint,
+              body: Evaluators.basalImageRequest(image, aiTopics),
+              timeoutMs: Config.IMAGE_TIMEOUT_MS,
+            });
+          })
+          .finally(() => imageRequests.delete(key));
+        imageRequests.set(key, request);
+      }
+      reply = await request;
       imageCache.set(key, reply);
       if (imageCache.size > IMAGE_CACHE_SIZE) imageCache.delete(imageCache.keys().next().value);
     }
@@ -393,7 +411,9 @@ function queueLog(type, entry) {
  * a container hidden because of its picture is identified by the picture.
  */
 function logKey(entry) {
-  return entry.image ? `image\n${entry.image}` : `${entry.source}\n${entry.text}`;
+  if (!entry.image) return `${entry.source}\n${entry.text}`;
+  // A data: picture is logged as its type only (logImageUrl), so the text tells such pictures apart.
+  return entry.image.startsWith('data:') ? `image\n${entry.image}\n${entry.text}` : `image\n${entry.image}`;
 }
 
 /** Picture address for the log: a data: URL is replaced by its type (it can be megabytes long). */

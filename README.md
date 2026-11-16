@@ -124,7 +124,7 @@ class ContentEvaluator {
 | Class | Role |
 | --- | --- |
 | `KeywordEvaluator` | Fast local keyword matching (a single compiled regular expression with the `u` flag). |
-| `LocalAIEvaluator` | Sends a `POST` to the local endpoint. Limits concurrent requests (3), caches results and caps text length (2000 characters). `cancel()` drops the queued requests when the settings change. |
+| `LocalAIEvaluator` | Sends a `POST` to the local endpoint. Limits concurrent requests (3), caches results and caps text length (2000 characters). When a request fails, the ones still queued fail with it, so a server that hangs is not asked again for each of them. `cancel()` drops the queued requests when the settings change. |
 | `FallbackEvaluator` | Tries the AI model. On error (no server, timeout, invalid response) it falls back to `KeywordEvaluator` and skips the failing server for 30 s. |
 | `FirstHitEvaluator` | Asks evaluators in order and stops at the first one that hides the text. Used by the default *Keywords + AI* mode: a keyword match hides at once, without a request to the model. |
 
@@ -172,7 +172,7 @@ PARABENE_AI_IMAGES_ENABLED=true
 PARABENE_AI_IMAGES_ENDPOINT=http://192.168.1.170:8011
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -377,7 +377,7 @@ Enter its address in the panel (default `http://localhost:8011`; `/v1/basal` is 
 }
 ```
 
-The score, threshold and hidden topics work as for text. `politics` (*polityków, wiec lub wydarzenie polityczne*) is asked when checked; `clickbait` is never asked about a picture. Results are cached per picture address in the service worker (500 entries), so a sensitivity change or a page reload does not ask again. Pictures that cannot be fetched or decoded (or that the server refuses with HTTP 422) are skipped; any other error pauses image evaluation in that tab for 30 s, and the requests time out after 30 s.
+The score, threshold and hidden topics work as for text. `politics` (*polityków, wiec lub wydarzenie polityczne*) is asked when checked; `clickbait` is never asked about a picture. Results are cached per picture address in the service worker (500 entries), so a sensitivity change or a page reload does not ask again, and the same picture in two tiles or tabs is one request. Pictures that cannot be fetched or decoded (or that the server refuses with HTTP 422) are skipped; any other error pauses image evaluation in that tab for 30 s, and the requests time out after 30 s.
 
 Measured with `Remek/basal-omni-1.0-mini` on 20 photos at the default topics:
 

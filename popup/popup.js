@@ -60,7 +60,8 @@
   let settings = Config.sanitize({});
   let activeTabId = null;
   let tabReachable = false;
-  let feedbackTimer = 0;
+  /** Hint element → the timer that puts its standing hint back. */
+  const feedbackTimers = new Map();
   let recentlyAdded = new Set();
   let stats = null;
   let logEntries = [];
@@ -97,8 +98,9 @@
 
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
-    clearTimeout(feedbackTimer);
     for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus]) {
+      clearTimeout(feedbackTimers.get(hint));
+      feedbackTimers.delete(hint);
       hint.classList.remove('hint--ok', 'hint--error');
     }
     I18n.localize(document, i18n);
@@ -215,14 +217,19 @@
     }
   }
 
-  /** Shows a message; with `fallbackKey` it reverts to that (translated) hint after a moment. */
+  /**
+   * Shows a message; with `fallbackKey` it reverts to that (translated) hint after a moment.
+   * Every hint has its own timer, and a new message cancels the pending revert of the one it
+   * replaces (a test result must not be wiped by the revert of "address saved").
+   */
   function showFeedback(element, text, kind, fallbackKey) {
+    clearTimeout(feedbackTimers.get(element));
+    feedbackTimers.delete(element);
     element.textContent = text;
     element.classList.toggle('hint--ok', kind === 'ok');
     element.classList.toggle('hint--error', kind === 'error');
     if (fallbackKey) {
-      clearTimeout(feedbackTimer);
-      feedbackTimer = setTimeout(() => showFeedback(element, t(fallbackKey), null), 3500);
+      feedbackTimers.set(element, setTimeout(() => showFeedback(element, t(fallbackKey), null), 3500));
     }
   }
 

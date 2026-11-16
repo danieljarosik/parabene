@@ -344,9 +344,13 @@
       } else if (result.hide) {
         const previous = hiddenSource(el);
         const byImage = hiddenByImage(el);
+        const known = state.hiddenItems.get(el);
         hide(el, result);
         state.hiddenItems.set(el, { text });
-        if (previous !== hiddenSource(el) || byImage) logHidden(text, result);
+        // Logged once per content: again when hidden for another reason, or when the page reused
+        // the element for other content.
+        const sameItem = previous === hiddenSource(el) && !byImage && known && sameContent(known.text || '', text);
+        if (!sameItem) logHidden(text, result);
       } else {
         // A container hidden because of its picture stays hidden until the picture is judged again.
         if (heldByText(el)) unhide(el);
@@ -447,6 +451,10 @@
   function pumpImages() {
     const images = state.images;
     if (!images.enabled || !state.enabled) return;
+    if (!isContextAlive()) {
+      teardown(); // extension reloaded: every request would fail, every 30 s, for as long as the tab lives
+      return;
+    }
     const wait = images.retryAt - Date.now();
     if (wait > 0) {
       clearTimeout(images.retryTimer);
@@ -459,6 +467,22 @@
       images.pending.delete(el);
       if (images.observer) images.observer.unobserve(el);
       if (el.isConnected) checkImages(el);
+      else images.signatures.delete(el); // queued again if the page puts it back
+    }
+  }
+
+  /**
+   * Containers the page has removed leave the image queue. The observer reports only the ones it
+   * saw near the viewport, so the others would be kept (with their whole subtree) for good.
+   */
+  function pruneImageQueue() {
+    const images = state.images;
+    for (const el of images.pending) {
+      if (el.isConnected) continue;
+      images.pending.delete(el);
+      images.visible.delete(el);
+      if (images.observer) images.observer.unobserve(el);
+      images.signatures.delete(el); // queued again if the page puts it back
     }
   }
 
@@ -782,11 +806,12 @@
   function mark(el, result, kind, learn) {
     const previous = countedKind(el);
     let bar = directBar(el);
-    if (!bar) {
-      bar = createBar(el);
-      el.insertBefore(bar, el.firstChild);
-    }
+    const created = !bar;
+    if (created) bar = createBar(el);
     labelBar(bar, result, kind);
+    // Labelled before it is inserted: the observer then sees one added bar (which it ignores)
+    // instead of text changes inside it, each of which would schedule a scan.
+    if (created) el.insertBefore(bar, el.firstChild);
     el.setAttribute(ATTR_REASON, result.reason || '');
     el.setAttribute(ATTR_SOURCE, result.source || 'keyword');
     setOrRemoveAttribute(el, ATTR_CATEGORY, result.category);
@@ -1022,6 +1047,8 @@
   function flush() {
     state.timer = 0;
     state.firstQueuedAt = 0;
+    // After the extension is reloaded this script can reach neither the model nor the settings.
+    if (state.alive && !isContextAlive()) teardown();
     if (!state.enabled || !state.alive) {
       state.pendingRoots.clear();
       state.removalRoots.clear();
@@ -1056,6 +1083,7 @@
       if (owner) candidates.add(owner);
       repairBar(target);
     }
+    if (removals.length) pruneImageQueue();
 
     // Mark all containers first so that ownText() skips nested ones.
     for (const candidate of candidates) candidate.setAttribute(ATTR_CANDIDATE, '');

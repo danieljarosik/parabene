@@ -16,7 +16,7 @@
  *   1 – the same words); LEARN_SIMILARITIES maps the panel setting to the threshold.
  * Pictures are matched by their address only.
  *
- * Loaded by the content scripts and the popup; the service worker only stores the examples.
+ * Loaded by the content scripts; the service worker only stores the examples and the popup lists them.
  */
 (function (root) {
   'use strict';

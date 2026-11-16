@@ -126,23 +126,32 @@
 
     async run(task) {
       if (this.cancelled) throw cancelledError();
-      if (this.active >= this.max) {
+      if (this.active < this.max) {
+        this.active += 1;
+      } else {
+        // A finishing task hands its slot over (see below), so the slot is already counted.
         await new Promise((resolve, reject) => this.queue.push({ resolve, reject }));
       }
-      this.active += 1;
       try {
         return await task();
       } finally {
-        this.active -= 1;
+        // The slot goes straight to the next queued task: freeing it first would let a task
+        // started in the meantime take it as well, and the limit would be exceeded.
         const next = this.queue.shift();
         if (next) next.resolve();
+        else this.active -= 1;
       }
+    }
+
+    /** Rejects the queued tasks with `err`; running tasks finish and later ones are accepted. */
+    drop(err) {
+      for (const { reject } of this.queue.splice(0)) reject(err);
     }
 
     /** Rejects the queued tasks and every later one; running tasks finish. */
     cancel() {
       this.cancelled = true;
-      for (const { reject } of this.queue.splice(0)) reject(cancelledError());
+      this.drop(cancelledError());
     }
   }
 
@@ -335,8 +344,8 @@
 
   /**
    * Classification via a local server (a classification model, llama.cpp, Ollama…).
-   * Throws when the endpoint is unreachable or the response is invalid —
-   * failure handling is provided by FallbackEvaluator.
+   * Throws when the endpoint is unreachable or the response is invalid (the evaluations still
+   * waiting in the queue then fail too) — failure handling is provided by FallbackEvaluator.
    */
   class LocalAIEvaluator extends ContentEvaluator {
     constructor({
@@ -362,9 +371,16 @@
       if (!input) return makeResult(false, '', 'ai');
       if (this.cache.has(input)) return this.cache.get(input);
 
-      const data = await this.limiter.run(() =>
-        this.transport({ endpoint: this.endpoint, text: input, timeoutMs: this.timeoutMs })
-      );
+      const data = await this.limiter.run(async () => {
+        try {
+          return await this.transport({ endpoint: this.endpoint, text: input, timeoutMs: this.timeoutMs });
+        } catch (err) {
+          // The model has failed: the evaluations still queued fail with it now. Sent one by one,
+          // each would wait for its own timeout when the server hangs (e.g. a LAN host that is off).
+          this.limiter.drop(err);
+          throw err;
+        }
+      });
       if (!data || typeof data.hide !== 'boolean') {
         throw codedError('invalidResponse', 'invalid model response (expected {"hide": boolean, "reason": string})');
       }
@@ -387,7 +403,7 @@
 
   /**
    * Tries the primary strategy; on error it uses the fallback and stops querying
-   * the failing primary strategy for `cooldownMs`.
+   * the failing primary strategy for `cooldownMs`. `onError` is called once per outage.
    */
   class FallbackEvaluator extends ContentEvaluator {
     constructor(primary, fallback, { cooldownMs = 30000, onError = null } = {}) {
@@ -405,8 +421,10 @@
           return await this.primary.evaluate(text);
         } catch (err) {
           if (isCancelled(err)) throw err; // not a failure of the model — no fallback verdict
+          // Already cooling down: this evaluation was under way or queued when the model failed.
+          const known = Date.now() < this.retryAt;
           this.retryAt = Date.now() + this.cooldownMs;
-          if (this.onError) this.onError(err);
+          if (!known && this.onError) this.onError(err);
         }
       }
       return Object.assign(await this.fallback.evaluate(text), { fallback: true });
