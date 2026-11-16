@@ -2,9 +2,13 @@
  * ParaBene – decision engine.
  *
  * Every evaluator implements `async evaluate(text)` and returns:
- *   { hide: boolean, reason: string, source: "keyword" | "ai", category?: string }
+ *   { hide: boolean, reason: string, source: "keyword" | "ai", category?: string,
+ *     details?: object, fallback?: true }
  * `reason` is raw data (a matched phrase or the model's own text); `category`
  * is a language-neutral id. Turning them into UI text is up to the caller.
+ * `details` carries the model's numbers (score, threshold, probabilities, model)
+ * for the log of hidden content; `fallback` marks a keyword verdict given because
+ * the AI model was unavailable.
  *
  * content.js knows only this contract, so the evaluation strategy
  * (keywords, local AI model, fallback chain) can be swapped without
@@ -211,9 +215,9 @@
   }
 
   /**
-   * basal reply → {hide, reason, category, score}: score = summed probability of the selected
-   * topics, hide when it reaches `threshold`; the category is the most probable selected topic.
-   * Throws `invalidResponse` when the reply has no probabilities.
+   * basal reply → {hide, reason, category, score, probabilities, model}: score = summed
+   * probability of the selected topics, hide when it reaches `threshold`; the category is the
+   * most probable selected topic. Throws `invalidResponse` when the reply has no probabilities.
    */
   function parseBasalResponse(data, { threshold = 0.5, topics = BASAL_DEFAULT_TOPICS } = {}) {
     const answer = data && data.answers && data.answers[BASAL_QUESTION];
@@ -230,7 +234,12 @@
     }
     score = Math.round(Math.min(1, score) * 100) / 100;
     const hide = Boolean(category) && score >= threshold;
-    return { hide, reason: '', category: hide ? category : '', score };
+    const probabilities = {};
+    for (const [key, value] of Object.entries(probs)) {
+      if (typeof value === 'number') probabilities[key] = Math.round(value * 1000) / 1000;
+    }
+    const model = data && typeof data.model === 'string' ? data.model : '';
+    return { hide, reason: '', category: hide ? category : '', score, probabilities, model };
   }
 
   /**
@@ -246,6 +255,17 @@
       }
       return response.data;
     };
+  }
+
+  /** The model's numbers worth logging (basal: score, threshold, probabilities, model name). */
+  function modelDetails(data) {
+    const details = {};
+    for (const key of ['score', 'threshold']) {
+      if (typeof data[key] === 'number') details[key] = data[key];
+    }
+    if (data.probabilities && typeof data.probabilities === 'object') details.probabilities = data.probabilities;
+    if (typeof data.model === 'string' && data.model) details.model = data.model;
+    return Object.keys(details).length ? details : null;
   }
 
   /**
@@ -287,6 +307,8 @@
       const reason = typeof data.reason === 'string' ? data.reason.trim().slice(0, 80) : '';
       const category = typeof data.category === 'string' && /^[a-z]+$/.test(data.category) ? data.category : '';
       const result = makeResult(data.hide, data.hide ? reason : '', 'ai', data.hide ? category : '');
+      const details = modelDetails(data);
+      if (details) result.details = details;
 
       this.cache.set(input, result);
       if (this.cache.size > this.cacheSize) this.cache.delete(this.cache.keys().next().value);
@@ -317,7 +339,7 @@
           if (this.onError) this.onError(err);
         }
       }
-      return this.fallback.evaluate(text);
+      return Object.assign(await this.fallback.evaluate(text), { fallback: true });
     }
   }
 

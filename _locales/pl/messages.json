@@ -522,5 +522,63 @@
   "category_clickbait": {
     "message": "sensacja / clickbait",
     "description": "Category name: the AI model found sensationalism or a shocking (clickbait) headline."
+  },
+  "sourceKeyword": {
+    "message": "Słowa kluczowe:",
+    "description": "Label of the number of items hidden by keywords on the current page (the number follows)."
+  },
+  "sourceAi": {
+    "message": "Model AI:",
+    "description": "Label of the number of items hidden by the local AI model on the current page (the number follows)."
+  },
+  "logTitle": {
+    "message": "Dziennik ukrytych treści",
+    "description": "Heading of the card with the log of hidden content."
+  },
+  "logToggleName": {
+    "message": "Zapisuj ukryte treści",
+    "description": "Name of the switch that turns the log of hidden content on."
+  },
+  "logDesc": {
+    "message": "Tekst, adres strony i powód (słowa kluczowe lub AI) — tylko lokalnie, do pobrania jako plik do analizy.",
+    "description": "Explains what the log of hidden content records."
+  },
+  "logOff": {
+    "message": "Dziennik jest wyłączony.",
+    "description": "Shown when the log is off and empty."
+  },
+  "logEmpty": {
+    "message": "Brak wpisów — ukryte treści będą zapisywane podczas przeglądania.",
+    "description": "Shown when the log is on but empty."
+  },
+  "logDownload": {
+    "message": "Pobierz plik (.jsonl)",
+    "description": "Button that downloads the log as a JSON Lines file."
+  },
+  "logClear": {
+    "message": "Wyczyść dziennik",
+    "description": "Link that deletes all log entries."
+  },
+  "logClearConfirm": {
+    "message": "Kliknij ponownie, aby wyczyścić",
+    "description": "Shown on the clear link after the first click; a second click deletes the log."
+  },
+  "logSummary": {
+    "message": "Słowa kluczowe: $keyword$ · AI: $ai$ · pokazane mimo wszystko: $revealed$.",
+    "description": "Summary of the log: entries hidden by keywords, by the AI model, and how many the user revealed with 'Show anyway'.",
+    "placeholders": {
+      "keyword": {
+        "content": "$1",
+        "example": "30"
+      },
+      "ai": {
+        "content": "$2",
+        "example": "12"
+      },
+      "revealed": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
   }
 }

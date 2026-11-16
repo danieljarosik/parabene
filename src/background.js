@@ -4,6 +4,7 @@
  * - proxies requests to the local AI model (a fetch from the extension context
  *   is not subject to page CORS or private network restrictions),
  * - shows the number of hidden elements in the current tab on the icon badge,
+ * - keeps the opt-in log of hidden content (chrome.storage.local, exported by the panel),
  * - serves translations to content scripts (they cannot read extension files).
  */
 importScripts('config.js', 'i18n.js', 'evaluators.js');
@@ -54,6 +55,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === Config.MSG.GET_MESSAGES) {
     getMessages(message.locale).then(sendResponse);
     return true;
+  }
+
+  if (message.type === Config.MSG.LOG_HIDDEN || message.type === Config.MSG.LOG_REVEALED) {
+    queueLog(message.type, message.entry);
+    return false;
   }
 
   if (message.type === Config.MSG.STATS && sender.tab && sender.tab.id >= 0) {
@@ -136,4 +142,73 @@ function updateBadge(tabId, hidden) {
   const text = count === 0 ? '' : count > 999 ? '999+' : String(count);
   chrome.action.setBadgeText({ tabId, text }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ tabId, color: '#E8833A' }).catch(() => {});
+}
+
+/* ------------------------------------------------------------------ */
+/* Log of hidden content                                               */
+/* ------------------------------------------------------------------ */
+
+const LOG_FLUSH_MS = 1000;
+const logQueue = [];
+let logTimer = 0;
+let logWrite = Promise.resolve();
+
+/** Entries arrive in bursts while a page loads — they are written to storage in batches. */
+function queueLog(type, entry) {
+  if (!entry || typeof entry.text !== 'string' || !entry.text) return;
+  logQueue.push({ type, entry });
+  if (!logTimer) logTimer = setTimeout(flushLog, LOG_FLUSH_MS);
+}
+
+/** The same text hidden for the same reason (e.g. after a page reload) is logged once. */
+function logKey(entry) {
+  return `${entry.source}\n${entry.text}`;
+}
+
+function flushLog() {
+  logTimer = 0;
+  const batch = logQueue.splice(0);
+  logWrite = logWrite
+    .then(async () => {
+      const { logEnabled } = await Config.load();
+      if (!logEnabled) return;
+      const stored = await chrome.storage.local.get(Config.LOG_STORAGE_KEY);
+      const entries = Array.isArray(stored[Config.LOG_STORAGE_KEY]) ? stored[Config.LOG_STORAGE_KEY] : [];
+      const index = new Map(entries.map((entry) => [logKey(entry), entry]));
+      let changed = false;
+      for (const { type, entry } of batch) {
+        const clean = sanitizeLogEntry(entry);
+        const existing = index.get(logKey(clean));
+        if (type === Config.MSG.LOG_REVEALED) {
+          if (existing && !existing.revealed) {
+            existing.revealed = true;
+            changed = true;
+          }
+        } else if (!existing) {
+          entries.push(clean);
+          index.set(logKey(clean), clean);
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      await chrome.storage.local.set({ [Config.LOG_STORAGE_KEY]: entries.slice(-Config.LOG_MAX_ENTRIES) });
+    })
+    .catch((err) => console.warn('[ParaBene] Failed to write the log:', err));
+}
+
+/** Keeps only the known fields, with sane types and lengths. */
+function sanitizeLogEntry(raw) {
+  const entry = {
+    time: typeof raw.time === 'string' ? raw.time : new Date().toISOString(),
+    url: String(raw.url || '').slice(0, 500),
+    source: raw.source === 'ai' ? 'ai' : 'keyword',
+    mode: ['keywords', 'both', 'ai'].includes(raw.mode) ? raw.mode : 'keywords',
+    reason: String(raw.reason || '').slice(0, 200),
+    category: typeof raw.category === 'string' ? raw.category.slice(0, 40) : '',
+    fallback: raw.fallback === true,
+    revealed: false,
+    text: String(raw.text).slice(0, Config.LOG_MAX_TEXT),
+  };
+  if (raw.details && typeof raw.details === 'object') entry.details = raw.details;
+  return entry;
 }

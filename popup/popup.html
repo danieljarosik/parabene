@@ -31,6 +31,10 @@
         <div class="stat__text">
           <strong data-i18n="statTitle"></strong>
           <span id="stat-hint" data-i18n="statChecking"></span>
+          <span class="stat__split" id="stat-split" hidden>
+            <span class="source source--keyword"><span data-i18n="sourceKeyword"></span> <b id="stat-keyword">0</b></span>
+            <span class="source source--ai"><span data-i18n="sourceAi"></span> <b id="stat-ai">0</b></span>
+          </span>
         </div>
       </section>
 
@@ -125,6 +129,28 @@
               <p class="hint hint--error" id="ai-topics-empty" data-i18n="aiTopicsEmpty" hidden></p>
             </fieldset>
           </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h2 data-i18n="logTitle"></h2>
+          <span class="count" id="log-count">0</span>
+        </div>
+        <div class="engine engine--first">
+          <div class="engine__text">
+            <strong data-i18n="logToggleName"></strong>
+            <span data-i18n="logDesc"></span>
+          </div>
+          <label class="switch" data-i18n-title="logToggleName">
+            <input type="checkbox" id="log-enabled" role="switch" data-i18n-aria-label="logToggleName" />
+            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          </label>
+        </div>
+        <p class="hint" id="log-status" data-i18n="logEmpty"></p>
+        <div class="log__actions">
+          <button type="button" class="btn" id="log-download" data-i18n="logDownload"></button>
+          <button type="button" class="link" id="log-clear" data-i18n="logClear"></button>
         </div>
       </section>
 

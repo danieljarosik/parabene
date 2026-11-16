@@ -522,5 +522,63 @@
   "category_clickbait": {
     "message": "sensationalism / clickbait",
     "description": "Category name: the AI model found sensationalism or a shocking (clickbait) headline."
+  },
+  "sourceKeyword": {
+    "message": "Keywords:",
+    "description": "Label of the number of items hidden by keywords on the current page (the number follows)."
+  },
+  "sourceAi": {
+    "message": "AI model:",
+    "description": "Label of the number of items hidden by the local AI model on the current page (the number follows)."
+  },
+  "logTitle": {
+    "message": "Log of hidden content",
+    "description": "Heading of the card with the log of hidden content."
+  },
+  "logToggleName": {
+    "message": "Record hidden content",
+    "description": "Name of the switch that turns the log of hidden content on."
+  },
+  "logDesc": {
+    "message": "Text, page address and reason (keywords or AI) — kept locally only, downloadable as a file for analysis.",
+    "description": "Explains what the log of hidden content records."
+  },
+  "logOff": {
+    "message": "The log is off.",
+    "description": "Shown when the log is off and empty."
+  },
+  "logEmpty": {
+    "message": "No entries yet — hidden content will be recorded while you browse.",
+    "description": "Shown when the log is on but empty."
+  },
+  "logDownload": {
+    "message": "Download file (.jsonl)",
+    "description": "Button that downloads the log as a JSON Lines file."
+  },
+  "logClear": {
+    "message": "Clear log",
+    "description": "Link that deletes all log entries."
+  },
+  "logClearConfirm": {
+    "message": "Click again to clear",
+    "description": "Shown on the clear link after the first click; a second click deletes the log."
+  },
+  "logSummary": {
+    "message": "Keywords: $keyword$ · AI: $ai$ · shown anyway: $revealed$.",
+    "description": "Summary of the log: entries hidden by keywords, by the AI model, and how many the user revealed with 'Show anyway'.",
+    "placeholders": {
+      "keyword": {
+        "content": "$1",
+        "example": "30"
+      },
+      "ai": {
+        "content": "$2",
+        "example": "12"
+      },
+      "revealed": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
   }
 }

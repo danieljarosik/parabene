@@ -45,10 +45,11 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | Element | What it does |
 | --- | --- |
 | **ON/OFF** switch | Instantly enables or disables the filter in all tabs. When disabled, hidden content comes back. |
-| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon). |
+| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*) and **AI model** (*Model AI*). Content hidden by keywords while the AI server is unavailable counts as keywords. |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
 | **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
+| **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords or AI); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -110,11 +111,12 @@ parabene/
 
 ```js
 class ContentEvaluator {
-  async evaluate(text) // → { hide: boolean, reason: string, source: "keyword" | "ai", category?: string }
+  async evaluate(text) // → { hide: boolean, reason: string, source: "keyword" | "ai", category?: string,
+                      //     details?: { score, threshold, probabilities, model }, fallback?: true }
 }
 ```
 
-Evaluators are language-neutral: `reason` is raw data (the matched phrase or the model's own text) and `category` is an id such as `profanity`. The UI turns them into text in the chosen language; errors from the local model are likewise passed around as `{ code, detail }` and translated by the panel.
+`details` carries the AI model's numbers and `fallback` marks a keyword verdict given while the model was unavailable; both are used only by the log of hidden content. Evaluators are language-neutral: `reason` is raw data (the matched phrase or the model's own text) and `category` is an id such as `profanity`. The UI turns them into text in the chosen language; errors from the local model are likewise passed around as `{ code, detail }` and translated by the panel.
 
 | Class | Role |
 | --- | --- |
@@ -140,6 +142,7 @@ All settings live in `chrome.storage.local`:
   "aiMode": "both",
   "aiSensitivity": "medium",
   "aiTopics": ["accident", "violence", "death", "profanity"],
+  "logEnabled": false,
   "language": "pl"
 }
 ```
@@ -160,7 +163,7 @@ PARABENE_AI_SENSITIVITY=medium
 PARABENE_AI_TOPICS=accident,violence,death,profanity,politics
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_LOG_ENABLED` (`true`/`false`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -329,10 +332,36 @@ python3 tools/basal_check.py --url http://192.168.1.170:8010
 
 ---
 
+## Log of hidden content
+
+Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or set `PARABENE_LOG_ENABLED=true` in `.env`) to collect material for tuning the keywords, the sensitivity and the topics. The service worker keeps the log in `chrome.storage.local` (key `hideLog`). It is written in batches once a second and holds the newest 1,000 entries, each text capped at 2,000 characters. The same text hidden for the same reason (e.g. after a page reload) is recorded once. Only items hidden after the switch is turned on are recorded, so reload the page to record what is already hidden on it.
+
+**Download file (.jsonl)** (*Pobierz plik*) saves `parabene-log-YYYYMMDD-HHMM.jsonl` ([JSON Lines](https://jsonlines.org/)): a header line with the version and the settings at export time, then one hidden item per line.
+
+```json
+{"type":"meta","extension":"ParaBene","version":"1.0.0","exportedAt":"2026-11-16T09:12:00.000Z","entries":2,"settings":{"aiEnabled":true,"aiProtocol":"basal","aiMode":"both","aiSensitivity":"medium","aiThreshold":0.5,"aiTopics":["accident","violence","death","profanity"],"keywords":["wypadek","..."]}}
+{"type":"hidden","time":"2026-11-16T09:10:41.120Z","url":"https://www.example.pl/","source":"keyword","mode":"both","reason":"wypadek","category":"","fallback":false,"revealed":false,"text":"Wypadek na S6 koło Żukowa..."}
+{"type":"hidden","time":"2026-11-16T09:10:42.305Z","url":"https://www.example.pl/","source":"ai","mode":"both","reason":"","category":"violence","fallback":false,"revealed":true,"text":"...","details":{"score":0.58,"threshold":0.5,"probabilities":{"accident":0.04,"violence":0.51,"death":0.03,"profanity":0,"none":0.42},"model":"basal-2.0-mini-MLX-8bit"}}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `source` | `keyword` — hidden by a phrase from the list; `ai` — hidden by the AI model. |
+| `mode` | `keywords` (AI off), `both` or `ai` (`aiMode`) at the time of hiding. |
+| `reason` | The matched phrase (keywords) or the model's own reason (simple protocol). |
+| `category` | Category id, e.g. `profanity` for a profane phrase or the basal topic. |
+| `fallback` | `true` when keywords decided because the AI server was unavailable. |
+| `revealed` | `true` when you clicked **Show anyway** (*Pokaż mimo wszystko*), usually a false positive. |
+| `details` | AI only: the hide `score`, the `threshold`, basal's `probabilities` per topic and the `model` name. |
+| `text` | The text that was evaluated (the AI model received at most its first 2,000 characters). |
+
+---
+
 ## Privacy
 
 - No telemetry, analytics or external servers.
 - Settings are stored only in `chrome.storage.local`.
+- The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
 - In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself).
 
 ## Permissions

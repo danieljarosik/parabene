@@ -118,6 +118,7 @@
     aiMode: DEFAULT_AI_MODE,
     aiSensitivity: DEFAULT_AI_SENSITIVITY,
     aiTopics: DEFAULT_AI_TOPICS,
+    logEnabled: false,
     language: DEFAULT_LANGUAGE,
   });
 
@@ -126,7 +127,19 @@
     STATS: 'parabene:stats',
     GET_STATS: 'parabene:getStats',
     GET_MESSAGES: 'parabene:getMessages',
+    LOG_HIDDEN: 'parabene:logHidden',
+    LOG_REVEALED: 'parabene:logRevealed',
   });
+
+  /**
+   * Log of hidden content (opt-in, `logEnabled`): kept by the service worker in
+   * chrome.storage.local under LOG_STORAGE_KEY, never sent anywhere; the panel
+   * exports it as a .jsonl file for later analysis. Only the newest LOG_MAX_ENTRIES
+   * are kept, each text capped at LOG_MAX_TEXT characters.
+   */
+  const LOG_STORAGE_KEY = 'hideLog';
+  const LOG_MAX_ENTRIES = 1000;
+  const LOG_MAX_TEXT = 2000;
 
   const AI_TIMEOUT_MS = 4000;
   const AI_MAX_CHARS = 2000;
@@ -211,9 +224,10 @@
     PARABENE_AI_MODE: 'aiMode',
     PARABENE_AI_SENSITIVITY: 'aiSensitivity',
     PARABENE_AI_TOPICS: 'aiTopics',
+    PARABENE_LOG_ENABLED: 'logEnabled',
     PARABENE_LANGUAGE: 'language',
   });
-  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled']);
+  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'logEnabled']);
 
   /**
    * .env text (KEY=VALUE lines, # comments, optional quotes) → partial settings.
@@ -279,6 +293,7 @@
       aiMode: isSupportedMode(s.aiMode) ? s.aiMode : DEFAULT_AI_MODE,
       aiSensitivity: isSupportedSensitivity(s.aiSensitivity) ? s.aiSensitivity : DEFAULT_AI_SENSITIVITY,
       aiTopics: Array.isArray(s.aiTopics) ? sanitizeTopics(s.aiTopics) : [...DEFAULT_AI_TOPICS],
+      logEnabled: s.logEnabled === true,
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
     };
   }
@@ -330,6 +345,9 @@
     DEFAULT_SETTINGS,
     PROFANITY,
     MSG,
+    LOG_STORAGE_KEY,
+    LOG_MAX_ENTRIES,
+    LOG_MAX_TEXT,
     AI_TIMEOUT_MS,
     AI_MAX_CHARS,
     KEYWORD_MIN_LENGTH,

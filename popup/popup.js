@@ -12,6 +12,9 @@
     enabledState: document.getElementById('enabled-state'),
     hiddenCount: document.getElementById('hidden-count'),
     statHint: document.getElementById('stat-hint'),
+    statSplit: document.getElementById('stat-split'),
+    statKeyword: document.getElementById('stat-keyword'),
+    statAi: document.getElementById('stat-ai'),
     keywordForm: document.getElementById('keyword-form'),
     keywordInput: document.getElementById('keyword-input'),
     keywordFeedback: document.getElementById('keyword-feedback'),
@@ -30,6 +33,11 @@
     aiSensitivity: document.getElementById('ai-sensitivity'),
     aiTopics: [...document.querySelectorAll('#ai-topics input[type="checkbox"]')],
     aiTopicsEmpty: document.getElementById('ai-topics-empty'),
+    logEnabled: document.getElementById('log-enabled'),
+    logCount: document.getElementById('log-count'),
+    logStatus: document.getElementById('log-status'),
+    logDownload: document.getElementById('log-download'),
+    logClear: document.getElementById('log-clear'),
     version: document.getElementById('version'),
     language: document.getElementById('language'),
   };
@@ -39,6 +47,9 @@
   let tabReachable = false;
   let feedbackTimer = 0;
   let recentlyAdded = new Set();
+  let stats = null;
+  let logEntries = [];
+  let clearArmedTimer = 0;
 
   /* ---------------- Internationalisation ---------------- */
 
@@ -103,9 +114,13 @@
     for (const box of els.aiTopics) box.checked = settings.aiTopics.includes(box.value);
     els.aiTopicsEmpty.hidden = settings.aiTopics.length > 0;
 
+    els.logEnabled.checked = settings.logEnabled;
+
     renderLanguagePicker();
     renderKeywords();
     renderStatHint();
+    renderStats();
+    renderLog();
   }
 
   function renderKeywords() {
@@ -147,8 +162,20 @@
     }
   }
 
-  function setCount(value) {
-    els.hiddenCount.textContent = Number.isFinite(value) ? i18n.formatNumber(value) : '–';
+  /** `value`: {hidden, bySource: {keyword, ai}} from the content script, or null when unknown. */
+  function setStats(value) {
+    stats = value && Number.isFinite(value.hidden) ? value : null;
+    renderStats();
+  }
+
+  function renderStats() {
+    els.hiddenCount.textContent = stats ? i18n.formatNumber(stats.hidden) : '–';
+    const bySource = stats && stats.bySource;
+    els.statSplit.hidden = !bySource || stats.hidden === 0;
+    if (bySource) {
+      els.statKeyword.textContent = i18n.formatNumber(bySource.keyword || 0);
+      els.statAi.textContent = i18n.formatNumber(bySource.ai || 0);
+    }
   }
 
   /** Shows a message; with `fallbackKey` it reverts to that (translated) hint after a moment. */
@@ -292,6 +319,89 @@
     }
   }
 
+  /* ---------------- Log of hidden content ---------------- */
+
+  async function loadLog() {
+    const stored = await chrome.storage.local.get(Config.LOG_STORAGE_KEY);
+    setLogEntries(stored[Config.LOG_STORAGE_KEY]);
+  }
+
+  function setLogEntries(value) {
+    logEntries = Array.isArray(value) ? value : [];
+    renderLog();
+  }
+
+  function renderLog() {
+    const total = logEntries.length;
+    els.logCount.textContent = i18n.formatNumber(total);
+    els.logDownload.disabled = total === 0;
+    els.logClear.disabled = total === 0;
+    if (!clearArmedTimer) els.logClear.textContent = t('logClear');
+    if (total === 0) {
+      els.logStatus.textContent = t(settings.logEnabled ? 'logEmpty' : 'logOff');
+      return;
+    }
+    const ai = logEntries.filter((entry) => entry.source === 'ai').length;
+    const revealed = logEntries.filter((entry) => entry.revealed).length;
+    els.logStatus.textContent = t('logSummary', [
+      i18n.formatNumber(total - ai),
+      i18n.formatNumber(ai),
+      i18n.formatNumber(revealed),
+    ]);
+  }
+
+  /** JSON Lines: a header with the extension version and the settings, then one hidden item per line. */
+  function buildLogFile() {
+    const manifest = chrome.runtime.getManifest();
+    const meta = {
+      type: 'meta',
+      extension: 'ParaBene',
+      version: manifest.version,
+      exportedAt: new Date().toISOString(),
+      entries: logEntries.length,
+      settings: {
+        aiEnabled: settings.aiEnabled,
+        aiProtocol: settings.aiProtocol,
+        aiMode: settings.aiMode,
+        aiSensitivity: settings.aiSensitivity,
+        aiThreshold: Config.AI_SENSITIVITIES[settings.aiSensitivity],
+        aiTopics: settings.aiTopics,
+        keywords: settings.keywords,
+      },
+    };
+    const lines = [meta, ...logEntries.map((entry) => Object.assign({ type: 'hidden' }, entry))];
+    return lines.map((line) => JSON.stringify(line)).join('\n') + '\n';
+  }
+
+  function downloadLog() {
+    if (logEntries.length === 0) return;
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+    const blob = new Blob([buildLogFile()], { type: 'application/x-ndjson' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `parabene-log-${stamp}.jsonl`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  /** The first click arms the button, a second one within a few seconds clears the log. */
+  async function clearLog() {
+    if (!clearArmedTimer) {
+      els.logClear.textContent = t('logClearConfirm');
+      clearArmedTimer = setTimeout(() => {
+        clearArmedTimer = 0;
+        renderLog();
+      }, 4000);
+      return;
+    }
+    clearTimeout(clearArmedTimer);
+    clearArmedTimer = 0;
+    await chrome.storage.local.remove(Config.LOG_STORAGE_KEY);
+  }
+
   /* ---------------- Current tab ---------------- */
 
   async function refreshStats() {
@@ -301,10 +411,10 @@
       if (activeTabId == null) throw new Error('no active tab');
       const response = await chrome.tabs.sendMessage(activeTabId, { type: Config.MSG.GET_STATS });
       tabReachable = Boolean(response);
-      setCount(response ? response.hidden : NaN);
+      setStats(response);
     } catch (_) {
       tabReachable = false;
-      setCount(NaN);
+      setStats(null);
     }
     renderStatHint();
   }
@@ -344,6 +454,11 @@
     });
     els.aiEndpoint.addEventListener('input', () => els.aiEndpoint.classList.remove('input--invalid'));
     els.aiTest.addEventListener('click', testEndpoint);
+    els.logEnabled.addEventListener('change', () => {
+      chrome.storage.local.set({ logEnabled: els.logEnabled.checked });
+    });
+    els.logDownload.addEventListener('click', downloadLog);
+    els.logClear.addEventListener('click', clearLog);
     els.language.addEventListener('change', () => {
       if (Config.isSupportedLanguage(els.language.value)) {
         chrome.storage.local.set({ language: els.language.value });
@@ -352,6 +467,7 @@
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
+      if (Config.LOG_STORAGE_KEY in changes) setLogEntries(changes[Config.LOG_STORAGE_KEY].newValue);
       const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes);
       if (keys.length === 0) return;
       const next = Object.assign({}, settings);
@@ -370,7 +486,7 @@
       if (!message || message.type !== Config.MSG.STATS) return false;
       if (sender.tab && sender.tab.id === activeTabId) {
         tabReachable = true;
-        setCount(message.hidden);
+        setStats(message);
         renderStatHint();
       }
       return false;
@@ -381,6 +497,7 @@
     els.version.textContent = `v${chrome.runtime.getManifest().version}`;
     bind();
     settings = await Config.load();
+    await loadLog();
     await applyLanguage(settings.language);
     document.documentElement.classList.remove('i18n-pending');
     await refreshStats();

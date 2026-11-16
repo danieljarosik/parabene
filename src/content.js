@@ -76,7 +76,8 @@
     fullScanPending: false,
     timer: 0,
     firstQueuedAt: 0,
-    hiddenCount: 0,
+    hidden: { keyword: 0, ai: 0 },
+    hiddenTexts: new WeakMap(),
     lastHref: location.href,
     textLengths: new WeakMap(),
     inFlight: new WeakSet(),
@@ -238,8 +239,14 @@
 
     const stale = generation !== state.generation || !state.enabled;
     if (!stale && result && el.isConnected && !el.hasAttribute(ATTR_REVEALED)) {
-      if (result.hide) hide(el, result);
-      else if (el.classList.contains(CLASS_HIDDEN)) unhide(el);
+      if (result.hide) {
+        const previous = hiddenSource(el);
+        hide(el, result);
+        state.hiddenTexts.set(el, text);
+        if (previous !== hiddenSource(el)) logHidden(text, result);
+      } else if (el.classList.contains(CLASS_HIDDEN)) {
+        unhide(el);
+      }
     }
     if (rerun) evaluateCandidate(el);
   }
@@ -325,7 +332,27 @@
     else el.removeAttribute(name);
   }
 
+  /** "keyword" | "ai" for a hidden container, null when it is not hidden. */
+  function hiddenSource(el) {
+    if (!el.classList.contains(CLASS_HIDDEN)) return null;
+    return el.getAttribute(ATTR_SOURCE) === 'ai' ? 'ai' : 'keyword';
+  }
+
+  function countHidden(source, delta) {
+    if (!source) return;
+    state.hidden[source] = Math.max(0, state.hidden[source] + delta);
+    scheduleStats();
+  }
+
+  /** Recounts hidden containers from the DOM (after in-page navigation). */
+  function recountHidden() {
+    state.hidden = { keyword: 0, ai: 0 };
+    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) state.hidden[hiddenSource(el)] += 1;
+    scheduleStats();
+  }
+
   function hide(el, result) {
+    const previous = hiddenSource(el);
     let bar = directBar(el);
     if (!bar) {
       bar = createBar(el);
@@ -335,29 +362,31 @@
     el.setAttribute(ATTR_REASON, result.reason || '');
     el.setAttribute(ATTR_SOURCE, result.source || 'keyword');
     setOrRemoveAttribute(el, ATTR_CATEGORY, result.category);
-    if (!el.classList.contains(CLASS_HIDDEN)) {
-      el.classList.add(CLASS_HIDDEN);
-      state.hiddenCount += 1;
-      scheduleStats();
+    el.classList.add(CLASS_HIDDEN);
+    const current = hiddenSource(el);
+    if (current !== previous) {
+      countHidden(previous, -1);
+      countHidden(current, 1);
     }
   }
 
   function unhide(el) {
+    countHidden(hiddenSource(el), -1);
     const bar = directBar(el);
     if (bar) bar.remove();
     el.removeAttribute(ATTR_REASON);
     el.removeAttribute(ATTR_SOURCE);
     el.removeAttribute(ATTR_CATEGORY);
-    if (el.classList.contains(CLASS_HIDDEN)) {
-      el.classList.remove(CLASS_HIDDEN);
-      state.hiddenCount = Math.max(0, state.hiddenCount - 1);
-      scheduleStats();
-    }
+    el.classList.remove(CLASS_HIDDEN);
   }
 
   function reveal(el) {
+    const source = hiddenSource(el);
+    const text = state.hiddenTexts.get(el);
     el.setAttribute(ATTR_REVEALED, 'true');
     unhide(el);
+    // "Show anyway" usually means a false positive — worth marking in the log.
+    if (source && text) logEvent(Config.MSG.LOG_REVEALED, { source, text });
   }
 
   /** If the page rebuilt the inside of a hidden container and removed the bar — insert it again. */
@@ -378,7 +407,7 @@
   function unhideAll() {
     for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) unhide(el);
     for (const bar of document.querySelectorAll(`.${CLASS_BAR}`)) bar.remove();
-    state.hiddenCount = 0;
+    state.hidden = { keyword: 0, ai: 0 };
     scheduleStats();
   }
 
@@ -429,8 +458,7 @@
 
     if (location.href !== state.lastHref) {
       state.lastHref = location.href;
-      state.hiddenCount = document.querySelectorAll(`.${CLASS_HIDDEN}`).length;
-      scheduleStats();
+      recountHidden();
     }
 
     const roots = state.fullScanPending
@@ -565,6 +593,40 @@
     clearTimeout(state.statsTimer);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Log of hidden content (opt-in, kept by the service worker)          */
+  /* ------------------------------------------------------------------ */
+
+  function logEvent(type, entry) {
+    if (!state.settings || !state.settings.logEnabled || !isContextAlive()) return;
+    try {
+      chrome.runtime.sendMessage({ type, entry }).catch(() => {});
+    } catch (_) {
+      /* extension reloaded — nothing to log to */
+    }
+  }
+
+  function logHidden(text, result) {
+    const settings = state.settings;
+    const entry = {
+      time: new Date().toISOString(),
+      url: location.href,
+      source: result.source === 'ai' ? 'ai' : 'keyword',
+      mode: settings.aiEnabled ? settings.aiMode : 'keywords',
+      reason: result.reason || '',
+      category: result.category || '',
+      fallback: result.fallback === true,
+      text,
+    };
+    if (result.details) entry.details = result.details;
+    logEvent(Config.MSG.LOG_HIDDEN, entry);
+  }
+
+  function currentStats() {
+    const { keyword, ai } = state.enabled ? state.hidden : { keyword: 0, ai: 0 };
+    return { hidden: keyword + ai, bySource: { keyword, ai } };
+  }
+
   function scheduleStats() {
     clearTimeout(state.statsTimer);
     state.statsTimer = setTimeout(sendStats, STATS_DEBOUNCE_MS);
@@ -577,7 +639,7 @@
     }
     try {
       chrome.runtime
-        .sendMessage({ type: Config.MSG.STATS, hidden: state.enabled ? state.hiddenCount : 0 })
+        .sendMessage(Object.assign({ type: Config.MSG.STATS }, currentStats()))
         .catch(() => {});
     } catch (_) {
       teardown();
@@ -586,11 +648,7 @@
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || message.type !== Config.MSG.GET_STATS) return false;
-    sendResponse({
-      hidden: state.enabled ? state.hiddenCount : 0,
-      enabled: state.enabled,
-      adapter: adapter.name,
-    });
+    sendResponse(Object.assign(currentStats(), { enabled: state.enabled, adapter: adapter.name }));
     return false;
   });
 
@@ -604,8 +662,9 @@
       next[key] = value === undefined ? Config.DEFAULT_SETTINGS[key] : value;
     }
     const sanitized = Config.sanitize(next);
-    if (keys.length === 1 && keys[0] === 'language') {
-      // A UI language switch only changes the bar texts — no need to re-scan the page.
+    if (keys.every((key) => key === 'language' || key === 'logEnabled')) {
+      // A UI language switch only changes the bar texts and the log switch only affects
+      // future hides — no need to re-scan the page.
       const changed = sanitized.language !== state.settings.language;
       state.settings = sanitized;
       if (changed) updateLanguage(sanitized.language);
