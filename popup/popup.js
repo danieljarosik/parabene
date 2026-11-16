@@ -16,6 +16,8 @@
     statKeyword: document.getElementById('stat-keyword'),
     statAiText: document.getElementById('stat-ai-text'),
     statAiImage: document.getElementById('stat-ai-image'),
+    statPassedItem: document.getElementById('stat-passed-item'),
+    statPassed: document.getElementById('stat-passed'),
     keywordForm: document.getElementById('keyword-form'),
     keywordInput: document.getElementById('keyword-input'),
     keywordFeedback: document.getElementById('keyword-feedback'),
@@ -39,6 +41,13 @@
     aiSensitivity: document.getElementById('ai-sensitivity'),
     aiTopics: [...document.querySelectorAll('#ai-topics input[type="checkbox"]')],
     aiTopicsEmpty: document.getElementById('ai-topics-empty'),
+    learnEnabled: document.getElementById('learn-enabled'),
+    learnSettings: document.getElementById('learn-settings'),
+    learnSimilarity: document.getElementById('learn-similarity'),
+    learnCount: document.getElementById('learn-count'),
+    learnStatus: document.getElementById('learn-status'),
+    learnList: document.getElementById('learn-list'),
+    learnClear: document.getElementById('learn-clear'),
     logEnabled: document.getElementById('log-enabled'),
     logCount: document.getElementById('log-count'),
     logStatus: document.getElementById('log-status'),
@@ -56,6 +65,9 @@
   let stats = null;
   let logEntries = [];
   let clearArmedTimer = 0;
+  let learnedEntries = [];
+  let pendingCount = 0;
+  let learnClearArmedTimer = 0;
 
   /* ---------------- Internationalisation ---------------- */
 
@@ -132,12 +144,16 @@
     els.aiTopicsEmpty.hidden = settings.aiTopics.length > 0;
 
     els.logEnabled.checked = settings.logEnabled;
+    els.learnEnabled.checked = settings.learnEnabled;
+    els.learnSettings.classList.toggle('ai--inactive', !settings.learnEnabled);
+    els.learnSimilarity.value = settings.learnSimilarity;
 
     renderLanguagePicker();
     renderKeywords();
     renderStatHint();
     renderStats();
     renderLog();
+    renderLearned();
   }
 
   function renderKeywords() {
@@ -188,7 +204,10 @@
   function renderStats() {
     els.hiddenCount.textContent = stats ? i18n.formatNumber(stats.hidden) : '–';
     const bySource = stats && stats.bySource;
-    els.statSplit.hidden = !bySource || stats.hidden === 0;
+    const passed = (stats && stats.passed) || 0;
+    els.statSplit.hidden = !bySource || (stats.hidden === 0 && passed === 0);
+    els.statPassedItem.hidden = passed === 0;
+    els.statPassed.textContent = i18n.formatNumber(passed);
     if (bySource) {
       els.statKeyword.textContent = i18n.formatNumber(bySource.keyword || 0);
       els.statAiText.textContent = i18n.formatNumber(bySource.aiText || 0);
@@ -465,6 +484,109 @@
     await chrome.storage.local.remove(Config.LOG_STORAGE_KEY);
   }
 
+  /* ---------------- Learning from revealed content ---------------- */
+
+  async function loadLearned() {
+    const stored = await chrome.storage.local.get([Config.LEARN_STORAGE_KEY, Config.LEARN_PENDING_KEY]);
+    learnedEntries = Array.isArray(stored[Config.LEARN_STORAGE_KEY]) ? stored[Config.LEARN_STORAGE_KEY] : [];
+    pendingCount = countPending(stored[Config.LEARN_PENDING_KEY]);
+  }
+
+  function countPending(value) {
+    return value && typeof value === 'object' ? Object.keys(value).length : 0;
+  }
+
+  /** The reason an example was hidden for, as in the bar: category name or the matched phrase. */
+  function learnedReason(entry) {
+    const key = entry.category ? `category_${entry.category}` : '';
+    if (key && i18n.has(key)) return t(key);
+    return entry.reason || t(entry.source === 'ai' ? 'reasonAiDefault' : 'reasonUnknown');
+  }
+
+  function learnedSourceLabel(entry) {
+    if (entry.media === 'image') return t('learnSource_aiImage');
+    return t(entry.source === 'ai' ? 'learnSource_aiText' : 'learnSource_keyword');
+  }
+
+  function learnedSnippet(entry) {
+    if (entry.media === 'image') {
+      let host = '?';
+      try {
+        host = new URL(entry.image).hostname;
+      } catch (_) {
+        /* stored addresses are http(s) URLs */
+      }
+      return t('learnImageItem', host);
+    }
+    const text = String(entry.text || '').replace(/\s+/g, ' ').trim();
+    return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+  }
+
+  function renderLearned() {
+    const total = learnedEntries.length;
+    els.learnCount.textContent = i18n.formatNumber(total);
+    els.learnClear.disabled = total === 0;
+    if (!learnClearArmedTimer) els.learnClear.textContent = t('learnClear');
+
+    const sentences = [];
+    if (!settings.learnEnabled) sentences.push(t('learnOff'));
+    else sentences.push(total ? plural('learnSummary', total) : t('learnEmpty'));
+    if (settings.learnEnabled && pendingCount > 0) sentences.push(plural('learnPendingSummary', pendingCount));
+    els.learnStatus.textContent = sentences.join(' ');
+
+    const fragment = document.createDocumentFragment();
+    for (const entry of [...learnedEntries].reverse()) {
+      const item = document.createElement('li');
+      item.className = 'learned__item';
+      if (entry.category === 'profanity') item.classList.add('learned__item--masked');
+
+      const body = document.createElement('div');
+      body.className = 'learned__body';
+      const tag = document.createElement('span');
+      const sourceClass = entry.media === 'image' ? 'source--image' : entry.source === 'ai' ? 'source--ai' : '';
+      tag.className = `learned__tag source ${sourceClass}`.trim();
+      tag.title = learnedSourceLabel(entry);
+      tag.textContent = learnedReason(entry);
+      const text = document.createElement('span');
+      text.className = 'learned__text';
+      const snippet = learnedSnippet(entry);
+      text.textContent = snippet;
+      text.title = entry.url || '';
+      body.append(tag, text);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '×';
+      remove.title = t('learnRemoveTitle');
+      remove.setAttribute('aria-label', t('learnRemoveLabel', snippet.slice(0, 60)));
+      remove.addEventListener('click', () => forgetLearned([entry.id]));
+
+      item.append(body, remove);
+      fragment.append(item);
+    }
+    els.learnList.replaceChildren(fragment);
+  }
+
+  /** Removal goes through the service worker, which serialises all writes to the examples. */
+  function forgetLearned(ids) {
+    chrome.runtime.sendMessage({ type: Config.MSG.LEARN_FORGET, ids }).catch(() => {});
+  }
+
+  /** The first click arms the button, a second one within a few seconds forgets every example. */
+  function clearLearned() {
+    if (!learnClearArmedTimer) {
+      els.learnClear.textContent = t('learnClearConfirm');
+      learnClearArmedTimer = setTimeout(() => {
+        learnClearArmedTimer = 0;
+        renderLearned();
+      }, 4000);
+      return;
+    }
+    clearTimeout(learnClearArmedTimer);
+    learnClearArmedTimer = 0;
+    forgetLearned(learnedEntries.map((entry) => entry.id));
+  }
+
   /* ---------------- Current tab ---------------- */
 
   async function refreshStats() {
@@ -532,6 +654,15 @@
     els.logEnabled.addEventListener('change', () => {
       chrome.storage.local.set({ logEnabled: els.logEnabled.checked });
     });
+    els.learnEnabled.addEventListener('change', () => {
+      chrome.storage.local.set({ learnEnabled: els.learnEnabled.checked });
+    });
+    els.learnSimilarity.addEventListener('change', () => {
+      if (Config.isSupportedSimilarity(els.learnSimilarity.value)) {
+        chrome.storage.local.set({ learnSimilarity: els.learnSimilarity.value });
+      }
+    });
+    els.learnClear.addEventListener('click', clearLearned);
     els.logDownload.addEventListener('click', downloadLog);
     els.logClear.addEventListener('click', clearLog);
     els.language.addEventListener('change', () => {
@@ -543,6 +674,14 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (Config.LOG_STORAGE_KEY in changes) setLogEntries(changes[Config.LOG_STORAGE_KEY].newValue);
+      if (Config.LEARN_STORAGE_KEY in changes || Config.LEARN_PENDING_KEY in changes) {
+        if (Config.LEARN_STORAGE_KEY in changes) {
+          const value = changes[Config.LEARN_STORAGE_KEY].newValue;
+          learnedEntries = Array.isArray(value) ? value : [];
+        }
+        if (Config.LEARN_PENDING_KEY in changes) pendingCount = countPending(changes[Config.LEARN_PENDING_KEY].newValue);
+        renderLearned();
+      }
       const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes);
       if (keys.length === 0) return;
       const next = Object.assign({}, settings);
@@ -573,6 +712,7 @@
     bind();
     settings = await Config.load();
     await loadLog();
+    await loadLearned();
     await applyLanguage(settings.language);
     document.documentElement.classList.remove('i18n-pending');
     await refreshStats();

@@ -14,6 +14,7 @@
   --error-soft: #fdecea;
   --ai: #7a5cc2;
   --ai-image: #2f8f9d;
+  --learned: #3f7fc4;
   --radius: 14px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -240,6 +241,10 @@ body {
 
 .source--image::before {
   background: var(--ai-image);
+}
+
+.source--learned::before {
+  background: var(--learned);
 }
 
 .source b {
@@ -640,4 +645,101 @@ body {
   opacity: 0.5;
   cursor: default;
   text-decoration: none;
+}
+
+/* Learning from revealed content */
+
+.learned__actions {
+  justify-content: flex-end;
+}
+
+.learned {
+  margin-top: 8px;
+}
+
+.learned summary {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.learned:not(:has(li)) {
+  display: none;
+}
+
+.learned__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  margin: 8px 0 0;
+  padding: 2px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.learned__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 4px 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fffaf2;
+  font-size: 12px;
+}
+
+.learned__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.learned__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.learned__text {
+  overflow-wrap: anywhere;
+}
+
+.learned__item--masked .learned__text {
+  filter: blur(3.5px);
+  transition: filter 0.15s ease;
+}
+
+.learned__item--masked:hover .learned__text,
+.learned__item--masked:focus-within .learned__text {
+  filter: none;
+}
+
+.learned__item button {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.learned__item button:hover {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.learned__item button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

@@ -65,6 +65,23 @@
   const IMAGE_MAX_BYTES = 15 * 1024 * 1024;
 
   /**
+   * Learning from revealed content (opt-in, `learnEnabled`, see src/learning.js): content revealed
+   * with "Show anyway" and not hidden again becomes an example; similar content hidden for the same
+   * reason is then let through with a "Hide" bar. Similarity (`learnSimilarity`) → the cosine
+   * threshold: on Polish news snippets the same story from two portals scored ~0.5, another
+   * accident of the same kind ~0.25–0.3, an unrelated text ~0.1.
+   * Examples are kept by the service worker in chrome.storage.local (LEARN_STORAGE_KEY, newest
+   * LEARN_MAX_ENTRIES); revealed content still waiting for confirmation is kept under
+   * LEARN_PENDING_KEY until its tab leaves the page or the user scrolls far past it.
+   */
+  const LEARN_SIMILARITIES = Object.freeze({ strict: 0.45, medium: 0.33, loose: 0.2 });
+  const DEFAULT_LEARN_SIMILARITY = 'medium';
+  const LEARN_STORAGE_KEY = 'learned';
+  const LEARN_PENDING_KEY = 'learnPending';
+  const LEARN_MAX_ENTRIES = 300;
+  const LEARN_MAX_TEXT = 2000;
+
+  /**
    * UI languages. Each code must have a matching _locales/<code>/messages.json.
    * Names are endonyms (each language in its own name), as is the convention
    * for language pickers.
@@ -141,6 +158,8 @@
     aiImagesEnabled: false,
     aiImagesEndpoint: DEFAULT_IMAGE_ENDPOINT,
     logEnabled: false,
+    learnEnabled: false,
+    learnSimilarity: DEFAULT_LEARN_SIMILARITY,
     language: DEFAULT_LANGUAGE,
   });
 
@@ -153,6 +172,10 @@
     GET_MESSAGES: 'parabene:getMessages',
     LOG_HIDDEN: 'parabene:logHidden',
     LOG_REVEALED: 'parabene:logRevealed',
+    LEARN_PENDING: 'parabene:learnPending',
+    LEARN_COMMIT: 'parabene:learnCommit',
+    LEARN_CANCEL: 'parabene:learnCancel',
+    LEARN_FORGET: 'parabene:learnForget',
   });
 
   /**
@@ -207,6 +230,10 @@
     return AI_MODES.includes(value);
   }
 
+  function isSupportedSimilarity(value) {
+    return typeof value === 'string' && Object.prototype.hasOwnProperty.call(LEARN_SIMILARITIES, value);
+  }
+
   function isSupportedSensitivity(value) {
     return typeof value === 'string' && Object.prototype.hasOwnProperty.call(AI_SENSITIVITIES, value);
   }
@@ -251,9 +278,11 @@
     PARABENE_AI_IMAGES_ENABLED: 'aiImagesEnabled',
     PARABENE_AI_IMAGES_ENDPOINT: 'aiImagesEndpoint',
     PARABENE_LOG_ENABLED: 'logEnabled',
+    PARABENE_LEARN_ENABLED: 'learnEnabled',
+    PARABENE_LEARN_SIMILARITY: 'learnSimilarity',
     PARABENE_LANGUAGE: 'language',
   });
-  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'aiImagesEnabled', 'logEnabled']);
+  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'aiImagesEnabled', 'logEnabled', 'learnEnabled']);
 
   /**
    * .env text (KEY=VALUE lines, # comments, optional quotes) → partial settings.
@@ -289,6 +318,8 @@
         ignored.push(name);
       } else if (key === 'aiSensitivity' && !isSupportedSensitivity(value)) {
         ignored.push(name);
+      } else if (key === 'learnSimilarity' && !isSupportedSimilarity(value)) {
+        ignored.push(name);
       } else if (key === 'aiTopics') {
         // Comma- or space-separated ids; an empty value means "no topics".
         const topics = value.split(/[\s,;]+/).filter(Boolean);
@@ -323,6 +354,8 @@
       aiImagesEnabled: s.aiImagesEnabled === true,
       aiImagesEndpoint: imagesEndpoint || DEFAULT_IMAGE_ENDPOINT,
       logEnabled: s.logEnabled === true,
+      learnEnabled: s.learnEnabled === true,
+      learnSimilarity: isSupportedSimilarity(s.learnSimilarity) ? s.learnSimilarity : DEFAULT_LEARN_SIMILARITY,
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
     };
   }
@@ -374,6 +407,12 @@
     IMAGE_MAX_PER_CONTAINER,
     IMAGE_MAX_SEND_SIDE,
     IMAGE_MAX_BYTES,
+    LEARN_SIMILARITIES,
+    DEFAULT_LEARN_SIMILARITY,
+    LEARN_STORAGE_KEY,
+    LEARN_PENDING_KEY,
+    LEARN_MAX_ENTRIES,
+    LEARN_MAX_TEXT,
     ENV_FILE,
     ENV_KEYS,
     UI_LANGUAGES,
@@ -395,6 +434,7 @@
     isSupportedProtocol,
     isSupportedMode,
     isSupportedSensitivity,
+    isSupportedSimilarity,
     isSupportedLanguage,
     sanitizeTopics,
     resolveEndpoint,

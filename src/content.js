@@ -6,6 +6,8 @@
  * decides whether something gets hidden — there is no text-scoring logic here.
  * With image evaluation on, the pictures of containers the text did not hide are
  * judged by the service worker (the multimodal model), nearest the viewport first.
+ * With learning on (src/learning.js), revealed content gets a "Hide" bar and becomes an example,
+ * and content similar to an example is let through with a "Hide" bar instead of being hidden.
  */
 (() => {
   'use strict';
@@ -16,7 +18,8 @@
   const Config = globalThis.ParaBeneConfig;
   const I18n = globalThis.ParaBeneI18n;
   const Evaluators = globalThis.ParaBeneEvaluators;
-  if (!Config || !I18n || !Evaluators || !document.documentElement) return;
+  const Learning = globalThis.ParaBeneLearning;
+  if (!Config || !I18n || !Evaluators || !Learning || !document.documentElement) return;
 
   const ATTR_CHECKED = 'data-parabene-checked';
   const ATTR_CANDIDATE = 'data-parabene-candidate';
@@ -25,7 +28,12 @@
   const ATTR_SOURCE = 'data-parabene-source';
   const ATTR_CATEGORY = 'data-parabene-category';
   const ATTR_MEDIA = 'data-parabene-media';
+  /** On a visible container with a bar: "revealed" (shown by the user) or "passed" (let through). */
+  const ATTR_SHOWN = 'data-parabene-shown';
+  /** Pending example id of revealed content, or the ids of the examples that let content through. */
+  const ATTR_LEARN = 'data-parabene-learn';
   const CLASS_HIDDEN = 'parabene-hidden';
+  const CLASS_SHOWN = 'parabene-shown';
   const CLASS_BAR = 'parabene-bar';
 
   const DEBOUNCE_MS = 200;
@@ -46,6 +54,8 @@
   const IMAGE_MIN_RENDERED_HEIGHT = 60;
   /** How long image evaluation pauses after the image server failed. */
   const IMAGE_COOLDOWN_MS = 30000;
+  /** Revealed content scrolled this far out of the viewport is confirmed as an example. */
+  const LEARN_ROOT_MARGIN = '1000px 0px';
   /** Errors that concern one picture only (it is skipped); anything else pauses image evaluation. */
   const IMAGE_SKIP_ERRORS = new Set(['imageFetch', 'imageDecode', 'imageTooSmall']);
 
@@ -89,7 +99,7 @@
     fullScanPending: false,
     timer: 0,
     firstQueuedAt: 0,
-    hidden: { keyword: 0, aiText: 0, aiImage: 0 },
+    hidden: emptyCounts(),
     hiddenItems: new WeakMap(),
     lastHref: location.href,
     textLengths: new WeakMap(),
@@ -108,7 +118,20 @@
       checked: new WeakMap(),
       listening: new WeakSet(),
     },
+    learning: {
+      enabled: false,
+      threshold: Config.LEARN_SIMILARITIES[Config.DEFAULT_LEARN_SIMILARITY],
+      matcher: Learning.createMatcher([]),
+      corpus: Learning.createCorpus(),
+      counted: new WeakSet(),
+      observer: null,
+      seen: new WeakSet(),
+    },
   };
+
+  function emptyCounts() {
+    return { keyword: 0, aiText: 0, aiImage: 0, passed: 0 };
+  }
 
   /* ------------------------------------------------------------------ */
   /* Container detection heuristics                                     */
@@ -242,11 +265,13 @@
     el.setAttribute(ATTR_CHECKED, 'true');
 
     if (text.length < MIN_TEXT_LENGTH) {
-      if (el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el)) unhide(el);
+      if (heldByText(el)) unhide(el);
       queueImageCheck(el);
       return;
     }
 
+    // Before the first await, so the whole batch of a scan is in the page statistics.
+    const stems = learnStems(el, text);
     const generation = state.generation;
     const evaluator = state.evaluator;
     state.inFlight.add(el);
@@ -264,7 +289,12 @@
 
     const stale = generation !== state.generation || !state.enabled;
     if (!stale && result && el.isConnected && !el.hasAttribute(ATTR_REVEALED)) {
-      if (result.hide) {
+      const match = result.hide ? learnedMatch({ text, stems }, result) : null;
+      if (match) {
+        pass(el, result, match);
+        state.hiddenItems.set(el, { text });
+        queueImageCheck(el);
+      } else if (result.hide) {
         const previous = hiddenSource(el);
         const byImage = hiddenByImage(el);
         hide(el, result);
@@ -272,7 +302,7 @@
         if (previous !== hiddenSource(el) || byImage) logHidden(text, result);
       } else {
         // A container hidden because of its picture stays hidden until the picture is judged again.
-        if (el.classList.contains(CLASS_HIDDEN) && !hiddenByImage(el)) unhide(el);
+        if (heldByText(el)) unhide(el);
         queueImageCheck(el);
       }
     } else if (!stale && !result) {
@@ -287,6 +317,20 @@
 
   function hiddenByImage(el) {
     return el.classList.contains(CLASS_HIDDEN) && el.getAttribute(ATTR_MEDIA) === 'image';
+  }
+
+  /** Hidden, or let through by a learned example (both have a bar and a stored verdict). */
+  function isMarked(el) {
+    return el.classList.contains(CLASS_HIDDEN) || el.classList.contains(CLASS_SHOWN);
+  }
+
+  /** Hidden or let through because of its text (not its picture). */
+  function heldByText(el) {
+    return isMarked(el) && el.getAttribute(ATTR_MEDIA) !== 'image';
+  }
+
+  function heldByImage(el) {
+    return isMarked(el) && el.getAttribute(ATTR_MEDIA) === 'image';
   }
 
   /** Puts a container in the image queue; it is judged once it comes near the viewport. */
@@ -421,11 +465,16 @@
           const known = state.hiddenItems.get(el);
           const isNew = !hiddenByImage(el) || !known || known.image !== verdict.image;
           const text = ownText(el);
-          hide(el, verdict);
+          const match = learnedMatch({ text }, verdict);
+          if (match) {
+            pass(el, verdict, match);
+          } else {
+            hide(el, verdict);
+            if (isNew) logHidden(text, verdict);
+          }
           state.hiddenItems.set(el, { text, image: verdict.image });
-          if (isNew) logHidden(text, verdict);
         }
-      } else if (hiddenByImage(el)) {
+      } else if (heldByImage(el)) {
         unhide(el);
       }
     }
@@ -446,7 +495,9 @@
     if (images.enabled) {
       images.observer = new IntersectionObserver(onImageIntersection, { rootMargin: IMAGE_ROOT_MARGIN });
     } else {
-      for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}[${ATTR_MEDIA}="image"]`)) unhide(el);
+      for (const el of document.querySelectorAll(`[${ATTR_MEDIA}="image"]`)) {
+        if (barKind(el) !== 'revealed') unhide(el);
+      }
     }
   }
 
@@ -496,7 +547,9 @@
     message.className = 'parabene-bar__message';
     const reason = document.createElement('span');
     reason.className = 'parabene-bar__reason';
-    label.append(message, ' ', reason);
+    const note = document.createElement('span');
+    note.className = 'parabene-bar__note';
+    label.append(message, ' ', reason, note);
 
     const button = document.createElement('button');
     button.type = 'button';
@@ -504,7 +557,8 @@
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      reveal(container);
+      if (container.classList.contains(CLASS_HIDDEN)) reveal(container);
+      else if (container.classList.contains(CLASS_SHOWN)) rehide(container);
     });
 
     // The bar may end up inside a link or a clickable post — clicking it
@@ -518,14 +572,29 @@
     return bar;
   }
 
-  /** Writes all bar texts in the current UI language (also used after a language switch). */
-  function labelBar(bar, result) {
+  /**
+   * Writes all bar texts in the current UI language (also used after a language switch).
+   * `kind`: "hidden", "revealed" (shown by the user, learning on) or "passed" (let through).
+   */
+  function labelBar(bar, result, kind) {
     const { t, locale } = state.i18n;
     // The bar is injected into foreign pages — declare its language for screen readers.
     bar.lang = locale;
-    bar.querySelector('.parabene-bar__message').textContent = t('barText');
+    const shown = kind === 'revealed' || kind === 'passed';
+    bar.classList.toggle('parabene-bar--shown', shown);
+    const message = kind === 'revealed' ? 'barRevealedText' : kind === 'passed' ? 'barPassedText' : 'barText';
+    bar.querySelector('.parabene-bar__message').textContent = t(message);
     bar.querySelector('.parabene-bar__reason').textContent = formatReason(result);
-    bar.querySelector('.parabene-bar__btn').textContent = t('barReveal');
+    const note = kind === 'revealed' ? t('barRevealedNote') : kind === 'passed' ? t('barPassedNote') : '';
+    bar.querySelector('.parabene-bar__note').textContent = note ? ` ${note}` : '';
+    bar.querySelector('.parabene-bar__btn').textContent = t(shown ? 'barHide' : 'barReveal');
+  }
+
+  /** "hidden", "revealed" or "passed" for a container with a bar, null otherwise. */
+  function barKind(el) {
+    if (el.classList.contains(CLASS_HIDDEN)) return 'hidden';
+    if (el.classList.contains(CLASS_SHOWN)) return el.getAttribute(ATTR_SHOWN) === 'passed' ? 'passed' : 'revealed';
+    return null;
   }
 
   function setOrRemoveAttribute(el, name, value) {
@@ -549,6 +618,12 @@
     return el.getAttribute(ATTR_MEDIA) === 'image' ? 'aiImage' : 'aiText';
   }
 
+  /** Counter bucket of a container: a hiddenKind(), "passed" when let through, otherwise null. */
+  function countedKind(el) {
+    if (el.classList.contains(CLASS_SHOWN)) return el.getAttribute(ATTR_SHOWN) === 'passed' ? 'passed' : null;
+    return hiddenKind(el);
+  }
+
   function countHidden(kind, delta) {
     if (!kind) return;
     state.hidden[kind] = Math.max(0, state.hidden[kind] + delta);
@@ -557,73 +632,219 @@
 
   /** Recounts hidden containers from the DOM (after in-page navigation). */
   function recountHidden() {
-    state.hidden = { keyword: 0, aiText: 0, aiImage: 0 };
-    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) state.hidden[hiddenKind(el)] += 1;
+    state.hidden = emptyCounts();
+    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}, .${CLASS_SHOWN}`)) {
+      const kind = countedKind(el);
+      if (kind) state.hidden[kind] += 1;
+    }
     scheduleStats();
   }
 
-  function hide(el, result) {
-    const previous = hiddenKind(el);
+  /**
+   * Puts the bar on a container and stores the verdict on it. `kind`: "hidden" (the content
+   * collapses), "revealed" or "passed" (the content stays visible under a bar with "Hide").
+   * `learn` sets ATTR_LEARN (an empty string removes it, undefined keeps it).
+   */
+  function mark(el, result, kind, learn) {
+    const previous = countedKind(el);
     let bar = directBar(el);
     if (!bar) {
       bar = createBar(el);
       el.insertBefore(bar, el.firstChild);
     }
-    labelBar(bar, result);
+    labelBar(bar, result, kind);
     el.setAttribute(ATTR_REASON, result.reason || '');
     el.setAttribute(ATTR_SOURCE, result.source || 'keyword');
     setOrRemoveAttribute(el, ATTR_CATEGORY, result.category);
     setOrRemoveAttribute(el, ATTR_MEDIA, result.media);
-    el.classList.add(CLASS_HIDDEN);
-    const current = hiddenKind(el);
+    setOrRemoveAttribute(el, ATTR_SHOWN, kind === 'hidden' ? '' : kind);
+    if (learn !== undefined) setOrRemoveAttribute(el, ATTR_LEARN, learn);
+    el.classList.toggle(CLASS_HIDDEN, kind === 'hidden');
+    el.classList.toggle(CLASS_SHOWN, kind !== 'hidden');
+    const current = countedKind(el);
     if (current !== previous) {
       countHidden(previous, -1);
       countHidden(current, 1);
     }
   }
 
+  function hide(el, result) {
+    mark(el, result, 'hidden', '');
+  }
+
+  /** Lets content through because of learned examples (`match.ids`), with a "Hide" bar. */
+  function pass(el, result, match) {
+    mark(el, result, 'passed', match.ids.join(' '));
+  }
+
   function unhide(el) {
-    countHidden(hiddenKind(el), -1);
+    countHidden(countedKind(el), -1);
     const bar = directBar(el);
     if (bar) bar.remove();
     el.removeAttribute(ATTR_REASON);
     el.removeAttribute(ATTR_SOURCE);
     el.removeAttribute(ATTR_CATEGORY);
     el.removeAttribute(ATTR_MEDIA);
-    el.classList.remove(CLASS_HIDDEN);
+    el.removeAttribute(ATTR_SHOWN);
+    el.removeAttribute(ATTR_LEARN);
+    el.classList.remove(CLASS_HIDDEN, CLASS_SHOWN);
+    if (state.learning.observer) state.learning.observer.unobserve(el);
   }
 
+  /** "Show anyway". With learning on, the content keeps a "Hide" bar and becomes a pending example. */
   function reveal(el) {
     const source = hiddenSource(el);
-    const item = hiddenByImage(el) ? state.hiddenItems.get(el) : { text: (state.hiddenItems.get(el) || {}).text };
+    const result = storedResult(el);
+    const known = state.hiddenItems.get(el) || {};
+    const item = hiddenByImage(el) ? known : { text: known.text };
     el.setAttribute(ATTR_REVEALED, 'true');
-    unhide(el);
+    const id = learnable(item, result) ? newLearnId() : '';
+    if (id) {
+      mark(el, result, 'revealed', id);
+      sendLearn(Config.MSG.LEARN_PENDING, {
+        id,
+        entry: Object.assign({ url: location.href, text: item.text || '', image: item.image }, result),
+      });
+      watchRevealed(el);
+    } else {
+      unhide(el);
+    }
     // "Show anyway" usually means a false positive — worth marking in the log.
-    if (source && item && (item.text || item.image)) {
+    if (source && (item.text || item.image)) {
       logEvent(Config.MSG.LOG_REVEALED, { source, text: item.text || '', image: item.image });
     }
   }
 
-  /** If the page rebuilt the inside of a hidden container and removed the bar — insert it again. */
+  /**
+   * "Hide" on revealed content cancels its example; on content let through it forgets the
+   * examples that let it through (the storage change then re-scans every tab).
+   */
+  function rehide(el) {
+    const learn = el.getAttribute(ATTR_LEARN) || '';
+    if (barKind(el) === 'revealed') {
+      if (learn) sendLearn(Config.MSG.LEARN_CANCEL, { id: learn });
+      el.removeAttribute(ATTR_REVEALED);
+    } else {
+      const ids = learn.split(' ').filter(Boolean);
+      if (ids.length) sendLearn(Config.MSG.LEARN_FORGET, { ids });
+    }
+    if (state.learning.observer) state.learning.observer.unobserve(el);
+    hide(el, storedResult(el));
+  }
+
+  /** If the page rebuilt the inside of a container with a bar and removed the bar — insert it again. */
   function repairBar(node) {
-    const hidden = node.closest(`.${CLASS_HIDDEN}`);
-    if (hidden && !directBar(hidden)) {
-      hide(hidden, storedResult(hidden));
+    const marked = node.closest(`.${CLASS_HIDDEN}, .${CLASS_SHOWN}`);
+    if (marked && !directBar(marked)) {
+      mark(marked, storedResult(marked), barKind(marked));
     }
   }
 
   function relabelAll() {
-    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) {
+    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}, .${CLASS_SHOWN}`)) {
       const bar = directBar(el);
-      if (bar) labelBar(bar, storedResult(el));
+      if (bar) labelBar(bar, storedResult(el), barKind(el));
     }
   }
 
   function unhideAll() {
-    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}`)) unhide(el);
+    for (const el of document.querySelectorAll(`.${CLASS_HIDDEN}, .${CLASS_SHOWN}`)) unhide(el);
     for (const bar of document.querySelectorAll(`.${CLASS_BAR}`)) bar.remove();
-    state.hidden = { keyword: 0, aiText: 0, aiImage: 0 };
+    state.hidden = emptyCounts();
     scheduleStats();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Learning from revealed content (opt-in, src/learning.js)            */
+  /* ------------------------------------------------------------------ */
+
+  /** Stems of a container's text; every container counts once in the page statistics. */
+  function learnStems(el, text) {
+    const learning = state.learning;
+    if (!learning.enabled) return null;
+    const stems = Learning.stems(text);
+    if (!learning.counted.has(el)) {
+      learning.counted.add(el);
+      learning.corpus.add(stems);
+    }
+    return stems;
+  }
+
+  /** The examples content about to be hidden is similar to ({ ids, score }), or null. */
+  function learnedMatch(item, result) {
+    const learning = state.learning;
+    if (!learning.enabled || learning.matcher.size === 0) return null;
+    const found = learning.matcher.match(item, result, learning.corpus, learning.threshold);
+    return found.ids.length ? found : null;
+  }
+
+  /** A picture is matched by its address, so only an http(s) picture can be an example. */
+  function learnable(item, result) {
+    if (!state.learning.enabled) return false;
+    if (result.media === 'image') return /^https?:/i.test(item.image || '');
+    return (item.text || '').trim().length >= MIN_TEXT_LENGTH;
+  }
+
+  /** Content scripts on http:// pages have no crypto.randomUUID(). */
+  function newLearnId() {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function sendLearn(type, payload) {
+    if (!isContextAlive()) return;
+    try {
+      chrome.runtime.sendMessage(Object.assign({ type }, payload)).catch(() => {});
+    } catch (_) {
+      /* extension reloaded */
+    }
+  }
+
+  /** Revealed content the user has scrolled far past (without "Hide") is confirmed as an example. */
+  function watchRevealed(el) {
+    const learning = state.learning;
+    if (!learning.observer) {
+      learning.observer = new IntersectionObserver(onRevealedIntersection, { rootMargin: LEARN_ROOT_MARGIN });
+    }
+    learning.observer.observe(el);
+  }
+
+  function onRevealedIntersection(entries) {
+    const learning = state.learning;
+    for (const entry of entries) {
+      const el = entry.target;
+      if (entry.isIntersecting) {
+        learning.seen.add(el);
+        continue;
+      }
+      if (!learning.seen.has(el)) continue;
+      learning.observer.unobserve(el);
+      const id = el.getAttribute(ATTR_LEARN);
+      if (id && barKind(el) === 'revealed') sendLearn(Config.MSG.LEARN_COMMIT, { id });
+    }
+  }
+
+  function setLearned(entries) {
+    state.learning.matcher = Learning.createMatcher(entries);
+  }
+
+  async function loadLearned() {
+    try {
+      const stored = await chrome.storage.local.get(Config.LEARN_STORAGE_KEY);
+      setLearned(stored[Config.LEARN_STORAGE_KEY]);
+    } catch (err) {
+      console.warn('[ParaBene] Failed to load learned examples:', err);
+    }
+  }
+
+  function applyLearningSettings(settings) {
+    const learning = state.learning;
+    learning.enabled = settings.enabled && settings.learnEnabled;
+    learning.threshold = Config.LEARN_SIMILARITIES[settings.learnSimilarity];
+    if (learning.enabled) return;
+    // Learning off: revealed content simply stays revealed, without the "Hide" bar.
+    if (learning.observer) learning.observer.disconnect();
+    learning.observer = null;
+    for (const el of document.querySelectorAll(`.${CLASS_SHOWN}[${ATTR_SHOWN}="revealed"]`)) unhide(el);
   }
 
   function resetChecks() {
@@ -778,6 +999,7 @@
     if (previous && previous.language !== settings.language) updateLanguage(settings.language);
     state.evaluator = buildEvaluator(settings);
     applyImageSettings(settings);
+    applyLearningSettings(settings);
     if (!settings.enabled) {
       state.enabled = false;
       stop();
@@ -804,6 +1026,7 @@
     state.images.enabled = false;
     if (state.images.observer) state.images.observer.disconnect();
     clearTimeout(state.images.retryTimer);
+    if (state.learning.observer) state.learning.observer.disconnect();
     if (state.observer) {
       state.observer.disconnect();
       state.observer = null;
@@ -846,8 +1069,8 @@
   }
 
   function currentStats() {
-    const { keyword, aiText, aiImage } = state.enabled ? state.hidden : { keyword: 0, aiText: 0, aiImage: 0 };
-    return { hidden: keyword + aiText + aiImage, bySource: { keyword, aiText, aiImage } };
+    const { keyword, aiText, aiImage, passed } = state.enabled ? state.hidden : emptyCounts();
+    return { hidden: keyword + aiText + aiImage, bySource: { keyword, aiText, aiImage }, passed };
   }
 
   function scheduleStats() {
@@ -877,6 +1100,14 @@
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !state.settings || !state.alive) return;
+    if (Config.LEARN_STORAGE_KEY in changes) {
+      setLearned(changes[Config.LEARN_STORAGE_KEY].newValue);
+      // New or forgotten examples: judge the page again (verdicts mostly come from the caches).
+      if (state.learning.enabled && state.enabled) {
+        resetChecks();
+        start();
+      }
+    }
     const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes);
     if (keys.length === 0) return;
     const next = Object.assign({}, state.settings);
@@ -899,6 +1130,7 @@
   Config.load()
     .then(async (settings) => {
       state.i18n = await loadTranslator(settings.language);
+      await loadLearned();
       applySettings(settings);
     })
     .catch((err) => console.warn('[ParaBene] Failed to load settings:', err));

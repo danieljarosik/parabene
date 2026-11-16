@@ -7,6 +7,8 @@
  *   multimodal basal-serve server (src/config.js, "Optional image evaluation"),
  * - shows the number of hidden elements in the current tab on the icon badge,
  * - keeps the opt-in log of hidden content (chrome.storage.local, exported by the panel),
+ * - keeps the examples learned from revealed content (opt-in, src/learning.js) and confirms
+ *   pending ones when their tab leaves the page,
  * - serves translations to content scripts (they cannot read extension files).
  */
 importScripts('config.js', 'i18n.js', 'evaluators.js');
@@ -71,6 +73,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === Config.MSG.LOG_HIDDEN || message.type === Config.MSG.LOG_REVEALED) {
     queueLog(message.type, message.entry);
+    return false;
+  }
+
+  if (message.type === Config.MSG.LEARN_PENDING && sender.tab && sender.tab.id >= 0) {
+    learnPending(sender.tab.id, message.id, message.entry);
+    return false;
+  }
+  if (message.type === Config.MSG.LEARN_COMMIT) {
+    learnTask(() => commitPending((id) => id === message.id));
+    return false;
+  }
+  if (message.type === Config.MSG.LEARN_CANCEL) {
+    learnCancel(message.id);
+    return false;
+  }
+  if (message.type === Config.MSG.LEARN_FORGET && Array.isArray(message.ids)) {
+    learnTask(() => forgetLearned(new Set(message.ids)));
     return false;
   }
 
@@ -424,3 +443,133 @@ function sanitizeLogEntry(raw) {
   if (raw.details && typeof raw.details === 'object') entry.details = raw.details;
   return entry;
 }
+
+/* ------------------------------------------------------------------ */
+/* Learning from revealed content (opt-in, src/learning.js)            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * "Show anyway" makes the revealed content a pending example (LEARN_PENDING_KEY, with its tab).
+ * It is confirmed (moved to LEARN_STORAGE_KEY) when the user scrolls far past it (the content
+ * script sends LEARN_COMMIT), or when its tab navigates away, reloads or closes. "Hide" on the
+ * revealed content cancels it, also after it was confirmed. Pending examples are kept in
+ * chrome.storage.local, so a browser restart confirms them instead of losing them.
+ */
+
+let learnWrite = Promise.resolve();
+
+/** Storage updates run one after another — tabs send them concurrently. */
+function learnTask(task) {
+  learnWrite = learnWrite.then(task).catch((err) => console.warn('[ParaBene] Failed to update learned examples:', err));
+  return learnWrite;
+}
+
+async function readStoredObject(key) {
+  const stored = await chrome.storage.local.get(key);
+  const value = stored[key];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+async function readLearned() {
+  const stored = await chrome.storage.local.get(Config.LEARN_STORAGE_KEY);
+  const value = stored[Config.LEARN_STORAGE_KEY];
+  return Array.isArray(value) ? value : [];
+}
+
+function isLearnId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(id);
+}
+
+/** Keeps only the known fields, with sane types and lengths; null when there is nothing to learn from. */
+function sanitizeLearnEntry(raw, id) {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = {
+    id,
+    time: new Date().toISOString(),
+    url: String(raw.url || '').slice(0, 500),
+    source: raw.source === 'ai' ? 'ai' : 'keyword',
+    category: typeof raw.category === 'string' ? raw.category.slice(0, 40) : '',
+    reason: String(raw.reason || '').slice(0, 200),
+    text: String(raw.text || '').slice(0, Config.LEARN_MAX_TEXT),
+  };
+  if (raw.media === 'image') {
+    // Pictures are matched by their address, so a truncated or data: address is useless.
+    const image = String(raw.image || '');
+    if (!/^https?:/i.test(image) || image.length > 2000) return null;
+    entry.media = 'image';
+    entry.image = image;
+  } else if (!entry.text.trim()) {
+    return null;
+  }
+  return entry;
+}
+
+/** Same reason and the same text or picture — a newer example replaces the older one. */
+function learnKey(entry) {
+  const why = entry.category || entry.reason.toLocaleLowerCase('pl');
+  return [entry.source, entry.media || 'text', why, entry.media === 'image' ? entry.image : entry.text].join('\n');
+}
+
+function learnPending(tabId, id, raw) {
+  if (!isLearnId(id)) return;
+  const entry = sanitizeLearnEntry(raw, id);
+  if (!entry) return;
+  learnTask(async () => {
+    const pending = await readStoredObject(Config.LEARN_PENDING_KEY);
+    pending[id] = { tabId, entry };
+    await chrome.storage.local.set({ [Config.LEARN_PENDING_KEY]: pending });
+  });
+}
+
+function learnCancel(id) {
+  if (!isLearnId(id)) return;
+  learnTask(async () => {
+    const pending = await readStoredObject(Config.LEARN_PENDING_KEY);
+    if (pending[id]) {
+      delete pending[id];
+      await chrome.storage.local.set({ [Config.LEARN_PENDING_KEY]: pending });
+    }
+    await forgetLearned(new Set([id]));
+  });
+}
+
+/** Moves the pending examples selected by `select(id, item)` to the learned ones. */
+async function commitPending(select) {
+  const pending = await readStoredObject(Config.LEARN_PENDING_KEY);
+  const chosen = Object.entries(pending).filter(([id, item]) => select(id, item));
+  if (chosen.length === 0) return;
+  for (const [id] of chosen) delete pending[id];
+  await chrome.storage.local.set({ [Config.LEARN_PENDING_KEY]: pending });
+
+  // Learning switched off in the meantime: the pending examples are dropped.
+  const { learnEnabled } = await Config.load();
+  if (!learnEnabled) return;
+  const added = chosen.map(([, item]) => item.entry).filter((entry) => entry && isLearnId(entry.id));
+  const keys = new Set(added.map(learnKey));
+  const learned = (await readLearned()).filter((entry) => !keys.has(learnKey(entry)));
+  learned.push(...added);
+  await chrome.storage.local.set({ [Config.LEARN_STORAGE_KEY]: learned.slice(-Config.LEARN_MAX_ENTRIES) });
+}
+
+async function forgetLearned(ids) {
+  const learned = await readLearned();
+  const kept = learned.filter((entry) => !ids.has(entry.id));
+  if (kept.length !== learned.length) await chrome.storage.local.set({ [Config.LEARN_STORAGE_KEY]: kept });
+}
+
+function commitTab(tabId) {
+  learnTask(() => commitPending((id, item) => item && item.tabId === tabId));
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => commitTab(tabId));
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  // A new address (also an in-page navigation) or a reload: the user has left the revealed content.
+  if (changeInfo.url || changeInfo.status === 'loading') commitTab(tabId);
+});
+
+/** On start-up: pending examples of tabs that no longer exist (e.g. after a browser restart). */
+learnTask(async () => {
+  const tabs = await chrome.tabs.query({});
+  const open = new Set(tabs.map((tab) => tab.id));
+  await commitPending((id, item) => !item || !open.has(item.tabId));
+});

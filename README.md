@@ -7,7 +7,7 @@ Hidden content does not disappear from the page: it collapses into an unobtrusiv
 > ParaBene ukryło treść (powód: wypadek) **[Pokaż mimo wszystko]**
 > *(ParaBene hid this content (reason: accident) [Show anyway])*
 
-so it can be revealed with a single click in case of a false positive.
+so it can be revealed with a single click in case of a false positive. With the optional [learning](#learning-from-revealed-content) on, ParaBene remembers what you revealed and lets similar content through.
 
 - Plain JavaScript, HTML and CSS — **no `npm install`, no bundler, no external dependencies**.
 - Everything runs locally. Page text never leaves your machine or home network (the optional AI model runs on `localhost` or on a server you choose in your LAN); the same goes for pictures with the optional image evaluation.
@@ -45,11 +45,12 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | Element | What it does |
 | --- | --- |
 | **ON/OFF** switch | Instantly enables or disables the filter in all tabs. When disabled, hidden content comes back. |
-| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI server is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. |
+| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI server is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. With learning on, **Let through (learned)** (*Przepuszczone (nauka)*) counts content let through by learned examples. |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
 | **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
+| **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
@@ -95,9 +96,10 @@ parabene/
 │   ├── config.js          default settings, phrase list, chrome.storage.local access
 │   ├── i18n.js            translation loader/formatter (placeholders, plural forms, DOM localization)
 │   ├── evaluators.js      ContentEvaluator, KeywordEvaluator, LocalAIEvaluator, FallbackEvaluator
-│   ├── content.js         MutationObserver, container heuristics, hiding/restoring
+│   ├── learning.js        similarity of texts for learning from revealed content
+│   ├── content.js         MutationObserver, container heuristics, hiding/restoring, "Hide" bars
 │   ├── content.css        styles for hidden blocks and the placeholder bar
-│   └── background.js      service worker: default settings, local AI proxy (text and pictures), icon badge counter, log, translations for content scripts
+│   └── background.js      service worker: default settings, local AI proxy (text and pictures), icon badge counter, log, learned examples, translations for content scripts
 ├── popup/
 │   ├── popup.html
 │   ├── popup.css
@@ -146,6 +148,8 @@ All settings live in `chrome.storage.local`:
   "aiImagesEnabled": false,
   "aiImagesEndpoint": "http://localhost:8011",
   "logEnabled": false,
+  "learnEnabled": false,
+  "learnSimilarity": "medium",
   "language": "pl"
 }
 ```
@@ -168,7 +172,7 @@ PARABENE_AI_IMAGES_ENABLED=true
 PARABENE_AI_IMAGES_ENDPOINT=http://192.168.1.170:8011
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -417,10 +421,45 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 
 ---
 
+## Learning from revealed content
+
+Turn on **Learn from revealed content** (*Ucz się z odkrytych treści*) in the **Learning** (*Samouczenie*) card (or set `PARABENE_LEARN_ENABLED=true` in `.env`) to teach ParaBene with your own clicks.
+
+1. **Show anyway** (*Pokaż mimo wszystko*) shows the content under a blue bar:
+   > ParaBene pokazało ukrytą treść (powód: wypadek, AI – tekst) — jeśli jej nie ukryjesz, ParaBene zacznie przepuszczać podobne. **[Ukryj]**
+   > *(ParaBene showed hidden content (reason: accident, AI – text) — if you do not hide it, ParaBene will let similar content through. [Hide])*
+2. **Hide** (*Ukryj*) hides it again and nothing is learned. If you leave it shown, it becomes an **example** once you scroll far past it (about 1,000 px out of view) or the tab leaves the page (another address, a reload, closing the tab). Clicking **Hide** later still forgets the example.
+3. Content that would be hidden but is similar to an example is **let through** under a bar:
+   > ParaBene przepuściło tę treść (powód: wypadek, AI – tekst) — jest podobna do treści odkrytej wcześniej. **[Ukryj]**
+   > *(ParaBene let this content through (reason: accident, AI – text) — it is similar to content you revealed earlier. [Hide])*
+
+   **Hide** hides it and forgets every example that let it through, in all tabs. This is the way to correct a learned mistake.
+
+An example applies only to content hidden **by the same source for the same reason**. A text revealed after the AI text model hid it as *accident* lets through only texts the AI text model hides as *accident*, not ones hidden by a keyword or as *violence*. Pictures are matched by their address only (the same photo on another page or in another post); a picture embedded as a `data:` URL cannot be learned.
+
+**How texts are compared** (`src/learning.js`, all local, no model):
+
+- Words are lower-cased. Words shorter than 4 letters and common function words are dropped, and the rest is cut to a 5-letter stem, which covers most Polish inflection (*wypadek*, *wypadku*, *wypadkiem* → `wypad`).
+- Stems are weighted by how rare they are among the texts the page has shown (inverse document frequency). Page furniture repeated in every post (*Lubię to*, *Udostępnij*, the author's name) therefore counts for little. Until the page has shown 10 texts the weights are unreliable, so a strict threshold of 0.6 applies. Texts with fewer than 4 stems must be nearly identical (0.9).
+- The score is the cosine similarity of the two weighted vectors (0 – nothing in common, 1 – the same words). **How similar content to let through** (`learnSimilarity`, `LEARN_SIMILARITIES` in `src/config.js`) sets the threshold:
+
+| Setting | Threshold | Lets through |
+| --- | --- | --- |
+| *Ścisłe* (*strict*) | 0.45 | the same story, similarly worded |
+| *Umiarkowane* (*medium*, default) | 0.33 | the same or a very close story |
+| *Luźne* (*loose*) | 0.2 | a similar subject — e.g. another road accident |
+
+On sample Polish news (with Facebook post furniture), the same crash reported by two portals scored 0.51–0.54. Another highway truck accident scored 0.25–0.30, a different road accident 0.21–0.26, and a warehouse fire 0.06–0.12.
+
+The service worker keeps the examples in `chrome.storage.local` (key `learned`, newest 300, text capped at 2,000 characters). Revealed content still waiting for confirmation is kept under `learnPending`, so a browser restart confirms it instead of losing it. Every new or forgotten example makes open tabs judge their content again (text verdicts mostly come from the AI evaluator's cache of the last 300 texts and picture verdicts from the service worker's cache). Turning learning off keeps the examples but stops using them, and revealed content then stays plainly revealed. The panel lists the examples (newest first, profanity blurred until hovered) with a `×` to forget each one, and **Forget all examples** (*Zapomnij wszystkie wzorce*, click twice) deletes them all.
+
+---
+
 ## Privacy
 
 - No telemetry, analytics or external servers.
 - Settings are stored only in `chrome.storage.local`.
+- Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
 - The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
 - With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.
 - In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself).
@@ -429,7 +468,7 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 
 | Permission | Why |
 | --- | --- |
-| `storage` | saving settings and the phrase list |
+| `storage` | saving settings, the phrase list, the log and learned examples |
 | `activeTab` | reading the hidden-elements counter from the current tab |
 | `host_permissions: <all_urls>` | running the filter on news portals and social media; fetching pictures for the optional image evaluation |
 | `http://localhost/*`, `http://127.0.0.1/*` | connecting to the local AI model |

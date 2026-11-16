@@ -569,6 +569,26 @@
     "message": "Show anyway",
     "description": "Button in the bar that reveals hidden content."
   },
+  "barRevealedText": {
+    "message": "ParaBene showed hidden content",
+    "description": "Text of the bar above content revealed with 'Show anyway' while learning is on (the reason follows)."
+  },
+  "barRevealedNote": {
+    "message": "— if you do not hide it, ParaBene will let similar content through.",
+    "description": "Note after the reason in the bar above revealed content (learning on)."
+  },
+  "barPassedText": {
+    "message": "ParaBene let this content through",
+    "description": "Text of the bar above content that would be hidden but is let through because it is similar to a learned example (the reason follows)."
+  },
+  "barPassedNote": {
+    "message": "— it is similar to content you revealed earlier.",
+    "description": "Note after the reason in the bar above content let through by a learned example."
+  },
+  "barHide": {
+    "message": "Hide",
+    "description": "Button in the bar above revealed or let-through content that hides it again (and forgets the example)."
+  },
   "reasonUnknown": {
     "message": "unwanted content",
     "description": "Fallback reason when none is available."
@@ -612,6 +632,178 @@
   "sourceAiImage": {
     "message": "AI (picture):",
     "description": "Label of the number of items hidden by the AI image model (judging a picture) on the current page (the number follows)."
+  },
+  "sourcePassed": {
+    "message": "Let through (learned):",
+    "description": "Label of the number of items let through by learned examples on the current page (the number follows)."
+  },
+  "learnTitle": {
+    "message": "Learning",
+    "description": "Heading of the card with learning from revealed content."
+  },
+  "learnToggleName": {
+    "message": "Learn from revealed content",
+    "description": "Name of the switch that turns learning from revealed content on."
+  },
+  "learnDesc": {
+    "message": "Content shown with “Show anyway” and not hidden again becomes an example. Similar content hidden for the same reason is then let through, with a “Hide” bar.",
+    "description": "Explains how learning from revealed content works."
+  },
+  "learnSimilarityLabel": {
+    "message": "How similar content to let through",
+    "description": "Label of the select with the similarity required to let content through."
+  },
+  "learnSimilarity_strict": {
+    "message": "Strict — the same story",
+    "description": "Similarity option: only nearly the same text is let through."
+  },
+  "learnSimilarity_medium": {
+    "message": "Medium (recommended)",
+    "description": "Similarity option (default)."
+  },
+  "learnSimilarity_loose": {
+    "message": "Loose — a similar subject",
+    "description": "Similarity option: content on a similar subject is let through."
+  },
+  "learnOff": {
+    "message": "Off — learned examples are not used.",
+    "description": "Shown when learning is off."
+  },
+  "learnEmpty": {
+    "message": "No examples yet — reveal hidden content and leave it shown to teach ParaBene.",
+    "description": "Shown when learning is on and there are no examples."
+  },
+  "learnSummary_one": {
+    "message": "$count$ example learned.",
+    "description": "Number of learned examples (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "learnSummary_few": {
+    "message": "$count$ examples learned.",
+    "description": "Number of learned examples (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "learnSummary_many": {
+    "message": "$count$ examples learned.",
+    "description": "Number of learned examples (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnSummary_other": {
+    "message": "$count$ examples learned.",
+    "description": "Number of learned examples (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnPendingSummary_one": {
+    "message": "$count$ is waiting for confirmation (scroll on or leave the page).",
+    "description": "Number of revealed items waiting to become examples (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "learnPendingSummary_few": {
+    "message": "$count$ are waiting for confirmation (scroll on or leave the page).",
+    "description": "Number of revealed items waiting to become examples (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "learnPendingSummary_many": {
+    "message": "$count$ are waiting for confirmation (scroll on or leave the page).",
+    "description": "Number of revealed items waiting to become examples (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnPendingSummary_other": {
+    "message": "$count$ are waiting for confirmation (scroll on or leave the page).",
+    "description": "Number of revealed items waiting to become examples (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnShowList": {
+    "message": "Show learned examples",
+    "description": "Summary of the collapsible list of learned examples."
+  },
+  "learnListLabel": {
+    "message": "Learned examples",
+    "description": "Accessible name of the list of learned examples."
+  },
+  "learnClear": {
+    "message": "Forget all examples",
+    "description": "Link that deletes all learned examples."
+  },
+  "learnClearConfirm": {
+    "message": "Click again to forget",
+    "description": "Shown on the forget link after the first click; a second click deletes all examples."
+  },
+  "learnSource_keyword": {
+    "message": "keywords",
+    "description": "Tooltip of a learned example hidden by keywords."
+  },
+  "learnSource_aiText": {
+    "message": "AI – text",
+    "description": "Tooltip of a learned example hidden by the AI text model."
+  },
+  "learnSource_aiImage": {
+    "message": "AI – picture",
+    "description": "Tooltip of a learned example hidden by the AI image model."
+  },
+  "learnImageItem": {
+    "message": "picture from $host$",
+    "description": "A learned example that is a picture (the host it came from).",
+    "placeholders": {
+      "host": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "learnRemoveTitle": {
+    "message": "Forget this example",
+    "description": "Tooltip of the × button of a learned example."
+  },
+  "learnRemoveLabel": {
+    "message": "Forget example: $text$",
+    "description": "Accessible label of the × button of a learned example.",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "Wypadek na A4…"
+      }
+    }
   },
   "logTitle": {
     "message": "Log of hidden content",

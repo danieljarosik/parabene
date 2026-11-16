@@ -35,6 +35,7 @@
             <span class="source source--keyword"><span data-i18n="sourceKeyword"></span> <b id="stat-keyword">0</b></span>
             <span class="source source--ai"><span data-i18n="sourceAiText"></span> <b id="stat-ai-text">0</b></span>
             <span class="source source--image"><span data-i18n="sourceAiImage"></span> <b id="stat-ai-image">0</b></span>
+            <span class="source source--learned" id="stat-passed-item" hidden><span data-i18n="sourcePassed"></span> <b id="stat-passed">0</b></span>
           </span>
         </div>
       </section>
@@ -156,6 +157,39 @@
             </div>
             <p class="hint hint--error" id="ai-topics-empty" data-i18n="aiTopicsEmpty" hidden></p>
           </fieldset>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h2 data-i18n="learnTitle"></h2>
+          <span class="count" id="learn-count">0</span>
+        </div>
+        <div class="engine engine--first">
+          <div class="engine__text">
+            <strong data-i18n="learnToggleName"></strong>
+            <span data-i18n="learnDesc"></span>
+          </div>
+          <label class="switch" data-i18n-title="learnToggleName">
+            <input type="checkbox" id="learn-enabled" role="switch" data-i18n-aria-label="learnToggleName" />
+            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          </label>
+        </div>
+        <div class="ai" id="learn-settings">
+          <label class="ai__label" for="learn-similarity" data-i18n="learnSimilarityLabel"></label>
+          <select id="learn-similarity" class="input ai__select">
+            <option value="strict" data-i18n="learnSimilarity_strict"></option>
+            <option value="medium" data-i18n="learnSimilarity_medium"></option>
+            <option value="loose" data-i18n="learnSimilarity_loose"></option>
+          </select>
+          <p class="hint" id="learn-status" data-i18n="learnOff"></p>
+        </div>
+        <details class="learned" id="learn-details">
+          <summary data-i18n="learnShowList"></summary>
+          <ul class="learned__list" id="learn-list" data-i18n-aria-label="learnListLabel"></ul>
+        </details>
+        <div class="log__actions learned__actions">
+          <button type="button" class="link" id="learn-clear" data-i18n="learnClear"></button>
         </div>
       </section>
 

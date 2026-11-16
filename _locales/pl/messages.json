@@ -569,6 +569,26 @@
     "message": "Pokaż mimo wszystko",
     "description": "Button in the bar that reveals hidden content."
   },
+  "barRevealedText": {
+    "message": "ParaBene pokazało ukrytą treść",
+    "description": "Text of the bar above content revealed with 'Show anyway' while learning is on (the reason follows)."
+  },
+  "barRevealedNote": {
+    "message": "— jeśli jej nie ukryjesz, ParaBene zacznie przepuszczać podobne.",
+    "description": "Note after the reason in the bar above revealed content (learning on)."
+  },
+  "barPassedText": {
+    "message": "ParaBene przepuściło tę treść",
+    "description": "Text of the bar above content that would be hidden but is let through because it is similar to a learned example (the reason follows)."
+  },
+  "barPassedNote": {
+    "message": "— jest podobna do treści odkrytej wcześniej.",
+    "description": "Note after the reason in the bar above content let through by a learned example."
+  },
+  "barHide": {
+    "message": "Ukryj",
+    "description": "Button in the bar above revealed or let-through content that hides it again (and forgets the example)."
+  },
   "reasonUnknown": {
     "message": "niechciana treść",
     "description": "Fallback reason when none is available."
@@ -612,6 +632,178 @@
   "sourceAiImage": {
     "message": "AI (grafika):",
     "description": "Label of the number of items hidden by the AI image model (judging a picture) on the current page (the number follows)."
+  },
+  "sourcePassed": {
+    "message": "Przepuszczone (nauka):",
+    "description": "Label of the number of items let through by learned examples on the current page (the number follows)."
+  },
+  "learnTitle": {
+    "message": "Samouczenie",
+    "description": "Heading of the card with learning from revealed content."
+  },
+  "learnToggleName": {
+    "message": "Ucz się z odkrytych treści",
+    "description": "Name of the switch that turns learning from revealed content on."
+  },
+  "learnDesc": {
+    "message": "Treść pokazana przyciskiem „Pokaż mimo wszystko” i nieukryta z powrotem staje się wzorcem. Podobne treści, ukryte z tego samego powodu, będą przepuszczane z paskiem „Ukryj”.",
+    "description": "Explains how learning from revealed content works."
+  },
+  "learnSimilarityLabel": {
+    "message": "Jak podobne treści przepuszczać",
+    "description": "Label of the select with the similarity required to let content through."
+  },
+  "learnSimilarity_strict": {
+    "message": "Ścisłe — ta sama wiadomość",
+    "description": "Similarity option: only nearly the same text is let through."
+  },
+  "learnSimilarity_medium": {
+    "message": "Umiarkowane (zalecane)",
+    "description": "Similarity option (default)."
+  },
+  "learnSimilarity_loose": {
+    "message": "Luźne — podobny temat",
+    "description": "Similarity option: content on a similar subject is let through."
+  },
+  "learnOff": {
+    "message": "Wyłączone — zapamiętane wzorce nie są używane.",
+    "description": "Shown when learning is off."
+  },
+  "learnEmpty": {
+    "message": "Brak wzorców — pokaż ukrytą treść i jej nie ukrywaj, by ParaBene się nauczyło.",
+    "description": "Shown when learning is on and there are no examples."
+  },
+  "learnSummary_one": {
+    "message": "Zapamiętano $count$ wzorzec.",
+    "description": "Number of learned examples (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "learnSummary_few": {
+    "message": "Zapamiętano $count$ wzorce.",
+    "description": "Number of learned examples (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "learnSummary_many": {
+    "message": "Zapamiętano $count$ wzorców.",
+    "description": "Number of learned examples (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnSummary_other": {
+    "message": "Zapamiętano $count$ wzorca.",
+    "description": "Number of learned examples (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnPendingSummary_one": {
+    "message": "$count$ czeka na potwierdzenie (przewiń dalej lub opuść stronę).",
+    "description": "Number of revealed items waiting to become examples (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "learnPendingSummary_few": {
+    "message": "$count$ czekają na potwierdzenie (przewiń dalej lub opuść stronę).",
+    "description": "Number of revealed items waiting to become examples (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "learnPendingSummary_many": {
+    "message": "$count$ czeka na potwierdzenie (przewiń dalej lub opuść stronę).",
+    "description": "Number of revealed items waiting to become examples (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnPendingSummary_other": {
+    "message": "$count$ czeka na potwierdzenie (przewiń dalej lub opuść stronę).",
+    "description": "Number of revealed items waiting to become examples (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "learnShowList": {
+    "message": "Pokaż zapamiętane wzorce",
+    "description": "Summary of the collapsible list of learned examples."
+  },
+  "learnListLabel": {
+    "message": "Zapamiętane wzorce",
+    "description": "Accessible name of the list of learned examples."
+  },
+  "learnClear": {
+    "message": "Zapomnij wszystkie wzorce",
+    "description": "Link that deletes all learned examples."
+  },
+  "learnClearConfirm": {
+    "message": "Kliknij ponownie, aby zapomnieć",
+    "description": "Shown on the forget link after the first click; a second click deletes all examples."
+  },
+  "learnSource_keyword": {
+    "message": "słowa kluczowe",
+    "description": "Tooltip of a learned example hidden by keywords."
+  },
+  "learnSource_aiText": {
+    "message": "AI – tekst",
+    "description": "Tooltip of a learned example hidden by the AI text model."
+  },
+  "learnSource_aiImage": {
+    "message": "AI – grafika",
+    "description": "Tooltip of a learned example hidden by the AI image model."
+  },
+  "learnImageItem": {
+    "message": "grafika z $host$",
+    "description": "A learned example that is a picture (the host it came from).",
+    "placeholders": {
+      "host": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "learnRemoveTitle": {
+    "message": "Zapomnij ten wzorzec",
+    "description": "Tooltip of the × button of a learned example."
+  },
+  "learnRemoveLabel": {
+    "message": "Zapomnij wzorzec: $text$",
+    "description": "Accessible label of the × button of a learned example.",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "Wypadek na A4…"
+      }
+    }
   },
   "logTitle": {
     "message": "Dziennik ukrytych treści",

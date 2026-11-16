@@ -2,6 +2,8 @@
  * ParaBene – styles injected into pages.
  * A hidden container stays in the DOM (so infinite scroll keeps working),
  * collapses to a placeholder bar, and its actual content is not visible.
+ * With learning on, revealed content and content let through by a learned example
+ * (.parabene-shown) stay visible under a blue bar with a "Hide" button.
  */
 
 .parabene-hidden {
@@ -24,13 +26,13 @@
 }
 
 /* Reset — page styles must not leak into the bar. */
-.parabene-hidden > .parabene-bar,
-.parabene-hidden > .parabene-bar * {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar,
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar * {
   all: initial !important;
   box-sizing: border-box !important;
 }
 
-.parabene-hidden > .parabene-bar {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar {
   display: flex !important;
   flex-wrap: wrap !important;
   align-items: center !important;
@@ -51,7 +53,7 @@
   z-index: 1 !important;
 }
 
-.parabene-hidden > .parabene-bar .parabene-bar__icon {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__icon {
   display: inline-block !important;
   flex: 0 0 auto !important;
   width: 10px !important;
@@ -61,7 +63,7 @@
   box-shadow: 0 0 0 3px rgba(242, 160, 78, 0.18) !important;
 }
 
-.parabene-hidden > .parabene-bar .parabene-bar__text {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__text {
   display: inline !important;
   flex: 1 1 200px !important;
   min-width: 0 !important;
@@ -70,13 +72,23 @@
   overflow-wrap: anywhere !important;
 }
 
-.parabene-hidden > .parabene-bar .parabene-bar__reason {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar :is(.parabene-bar__message, .parabene-bar__note) {
+  display: inline !important;
+  font: inherit !important;
+  color: inherit !important;
+}
+
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__note {
+  opacity: 0.85 !important;
+}
+
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__reason {
   display: inline !important;
   font: inherit !important;
   color: #9a5b12 !important;
 }
 
-.parabene-hidden > .parabene-bar .parabene-bar__btn {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__btn {
   display: inline-flex !important;
   align-items: center !important;
   flex: 0 0 auto !important;
@@ -91,12 +103,42 @@
   transition: background-color 0.15s ease, border-color 0.15s ease !important;
 }
 
-.parabene-hidden > .parabene-bar .parabene-bar__btn:hover {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__btn:hover {
   background: #ffefd6 !important;
   border-color: #e39d43 !important;
 }
 
-.parabene-hidden > .parabene-bar .parabene-bar__btn:focus-visible {
+:is(.parabene-hidden, .parabene-shown) > .parabene-bar .parabene-bar__btn:focus-visible {
   outline: 2px solid #f0a23a !important;
   outline-offset: 2px !important;
+}
+
+/* Revealed content and content let through by a learned example: the bar sits above visible content. */
+.parabene-shown > .parabene-bar.parabene-bar--shown {
+  background: #eef5fd !important;
+  border-color: #c4daf2 !important;
+  color: #24496b !important;
+}
+
+.parabene-shown > .parabene-bar.parabene-bar--shown .parabene-bar__icon {
+  background: linear-gradient(135deg, #7cb7ee, #3f7fc4) !important;
+  box-shadow: 0 0 0 3px rgba(80, 140, 210, 0.18) !important;
+}
+
+.parabene-shown > .parabene-bar.parabene-bar--shown .parabene-bar__reason {
+  color: #2f6aa3 !important;
+}
+
+.parabene-shown > .parabene-bar.parabene-bar--shown .parabene-bar__btn {
+  border-color: #9cc1e8 !important;
+  color: #1f5a92 !important;
+}
+
+.parabene-shown > .parabene-bar.parabene-bar--shown .parabene-bar__btn:hover {
+  background: #e1eefb !important;
+  border-color: #5f9bd6 !important;
+}
+
+.parabene-shown > .parabene-bar.parabene-bar--shown .parabene-bar__btn:focus-visible {
+  outline-color: #3f7fc4 !important;
 }
