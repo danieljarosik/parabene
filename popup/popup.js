@@ -30,7 +30,10 @@
     aiProtocol: document.getElementById('ai-protocol'),
     aiEndpoint: document.getElementById('ai-endpoint'),
     aiEndpointLabel: document.getElementById('ai-endpoint-label'),
-    aiBuiltinHint: document.getElementById('ai-builtin-hint'),
+    aiModel: document.getElementById('ai-model'),
+    aiModelStatus: document.getElementById('ai-model-status'),
+    aiModelProgress: document.getElementById('ai-model-progress'),
+    aiModelDownload: document.getElementById('ai-model-download'),
     aiTest: document.getElementById('ai-test'),
     aiStatus: document.getElementById('ai-status'),
     aiMode: document.getElementById('ai-mode'),
@@ -132,11 +135,11 @@
     els.aiEnabled.checked = settings.aiEnabled;
     els.aiSettings.classList.toggle('ai--inactive', !settings.aiEnabled);
     els.aiProtocol.value = settings.aiProtocol;
-    // The built-in model has no server: no address to enter, a note about the download instead.
+    // The built-in model has no server: no address to enter; the state of its file instead (refreshModel).
     const builtin = settings.aiProtocol === 'builtin';
     els.aiEndpoint.hidden = builtin;
     els.aiEndpointLabel.hidden = builtin;
-    els.aiBuiltinHint.hidden = !builtin;
+    els.aiModel.hidden = !builtin;
     els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol] || '';
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
     els.aiMode.value = settings.aiMode;
@@ -337,6 +340,55 @@
     els.aiEndpoint.classList.remove('input--invalid');
     await chrome.storage.local.set(update);
     showFeedback(els.aiStatus, t('aiProtocolSaved'), 'ok', 'aiHint');
+  }
+
+  /* ---------------- Built-in model: its file ---------------- */
+
+  let modelTimer = null;
+
+  /**
+   * Shows whether the model file is stored, and the "Download model" button while it is not: the
+   * built-in model is used only after the user has downloaded the file with that button.
+   * While a download or a load runs, the state is asked again every second.
+   */
+  async function refreshModel() {
+    clearTimeout(modelTimer);
+    if (settings.aiProtocol !== 'builtin') return;
+    let model;
+    try {
+      const response = await chrome.runtime.sendMessage({ type: Config.MSG.MODEL_STATUS });
+      model = response && response.ok ? response.data : { status: 'error', error: response && response.error };
+    } catch (err) {
+      model = { status: 'error', error: { code: 'unknown', detail: err.message } };
+    }
+    if (settings.aiProtocol !== 'builtin') return; // changed while waiting
+    renderModel(model);
+    clearTimeout(modelTimer);
+    if (model.status === 'downloading' || model.status === 'loading') modelTimer = setTimeout(refreshModel, 1000);
+  }
+
+  function renderModel({ status, progress, error }) {
+    const percent = Math.floor((progress || 0) * 100);
+    const downloading = status === 'downloading';
+    if (status === 'missing') showFeedback(els.aiModelStatus, t('aiModelMissing'), null);
+    else if (downloading) showFeedback(els.aiModelStatus, t('aiModelDownloading', String(percent)), null);
+    else if (status === 'loading') showFeedback(els.aiModelStatus, t('aiModelLoading'), null);
+    else if (status === 'error') showFeedback(els.aiModelStatus, t('aiModelFailed', describeAiError(error)), 'error');
+    else showFeedback(els.aiModelStatus, t('aiModelStored'), 'ok');
+    els.aiModelProgress.hidden = !downloading;
+    els.aiModelProgress.value = percent;
+    els.aiModelDownload.hidden = status !== 'missing' && status !== 'error';
+    els.aiModelDownload.disabled = false;
+  }
+
+  async function downloadModel() {
+    els.aiModelDownload.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({ type: Config.MSG.MODEL_DOWNLOAD });
+    } catch (_) {
+      /* refreshModel shows what happened */
+    }
+    await refreshModel();
   }
 
   /* ---------------- Image evaluation ---------------- */
@@ -656,6 +708,7 @@
       chrome.storage.local.set({ aiEnabled: els.aiEnabled.checked });
     });
     els.aiProtocol.addEventListener('change', saveProtocol);
+    els.aiModelDownload.addEventListener('click', downloadModel);
     els.aiMode.addEventListener('change', () => {
       if (Config.isSupportedMode(els.aiMode.value)) chrome.storage.local.set({ aiMode: els.aiMode.value });
     });
@@ -714,6 +767,7 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (Config.LOG_STORAGE_KEY in changes) setLogEntries(changes[Config.LOG_STORAGE_KEY].newValue);
+      if (Config.BUILTIN_STORAGE_KEY in changes) refreshModel();
       if (Config.LEARN_STORAGE_KEY in changes || Config.LEARN_PENDING_KEY in changes) {
         if (Config.LEARN_STORAGE_KEY in changes) {
           const value = changes[Config.LEARN_STORAGE_KEY].newValue;
@@ -734,6 +788,7 @@
         render();
       }
       if (keys.includes('enabled')) setTimeout(refreshStats, 400);
+      if (keys.some((key) => key === 'aiProtocol' || key === 'aiEnabled' || key === 'enabled')) refreshModel();
     });
 
     chrome.runtime.onMessage.addListener((message, sender) => {
@@ -756,6 +811,7 @@
     await applyLanguage(settings.language);
     document.documentElement.classList.remove('i18n-pending');
     await refreshStats();
+    refreshModel();
   }
 
   init().catch((err) => {

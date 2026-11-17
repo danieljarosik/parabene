@@ -17,8 +17,8 @@ content script  →  service worker  →  offscreen/offscreen.js  →  vendor/wl
 (src/content.js)   (src/background.js)   import { Wllama } from '../vendor/wllama/index.js'
 ```
 
-- The service worker opens the offscreen document when the filter and the AI model are on with the request format `builtin`.
-- `offscreen.js` creates one `Wllama` object, loads the model file with `loadModelFromUrl()` and answers each request with `createSystemOne()`, wllama's decision API.
+- The service worker opens the offscreen document, with the request format `builtin`, while the model file is stored and both the filter and the AI model are on, or while a download the user asked for runs.
+- `offscreen.js` creates one `Wllama` object, looks for the stored model file with `modelManager.getModels()`, downloads it with `modelManager.downloadModel()` only when the user asked for that, loads it with `loadModel()` and answers each request with `createSystemOne()`, wllama's decision API.
 - Nothing else imports this directory. With the request formats `simple` and `basal`, or with the AI model off, the files are never loaded.
 
 Removing this directory breaks only the built-in model: its requests fail and pages are filtered by keywords.
@@ -32,7 +32,7 @@ Removing this directory breaks only the built-in model: its requests fail and pa
 | `LICENCE` | 1 KB | wllama's MIT licence. |
 | `VERSION.json` | 1 KB | Where the files came from: package, version, tarball address, its SHA-512 and the SHA-256 of each file. |
 
-The model itself (1.17 GB) is not here. `offscreen.js` downloads it once from Hugging Face into the extension's own storage.
+The model itself (1.17 GB) is not here. `offscreen.js` downloads it from Hugging Face into the extension's own storage, once, and only after the user has clicked **Download model** in the panel.
 
 ## Do not edit
 

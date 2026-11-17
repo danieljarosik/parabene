@@ -27,7 +27,8 @@ third-party code is [wllama](https://github.com/ngxson/wllama) (MIT), vendored u
 `vendor/wllama/` for the built-in model (WebGPU, run in an offscreen document).
 Tooling scripts are plain Python 3 (standard library only). Settings live in `chrome.storage.local`. The optional AI evaluator uses either the user-configured local endpoint
 (`localhost` by default, or the user's own LAN server, e.g. basal-serve) or the built-in model that
-runs inside the browser. The only external request is the one-time model download from Hugging Face.
+runs inside the browser. The only external request is the one-time model download from Hugging Face,
+which the user starts with the "Download model" button in the panel.
 
 ## Project structure
 See the *Architecture* section of `README.md`. Short version: `manifest.json`,

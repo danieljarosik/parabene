@@ -335,6 +335,28 @@ body {
   font-size: 12px;
 }
 
+/* Built-in model: the state of its file, the download button and its progress */
+.model {
+  margin-top: 8px;
+}
+
+.model__status {
+  margin-top: 0;
+  font-weight: 600;
+}
+
+.model__progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  margin-top: 6px;
+  accent-color: var(--accent);
+}
+
+.model .btn {
+  margin-top: 8px;
+}
+
 .hint--ok {
   color: var(--ok);
 }

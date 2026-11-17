@@ -349,6 +349,8 @@ python3 tools/basal_check.py --url http://192.168.1.170:8010
 
 Pick **Built-in model (in the browser, WebGPU)** (*Wbudowany model (w przeglądarce, WebGPU)*) under **Request format** (*Format zapytań*), or set `PARABENE_AI_PROTOCOL=builtin` in `.env`, to run the basal model inside the browser. Nothing has to be installed or started, and page text does not leave the browser. Pages are judged as with a server; only the place where the model computes changes.
 
+**The model file is downloaded only when you ask for it.** With this format selected the panel shows whether the file (1.17 GB) is already stored. While it is not, the built-in model is off, pages are filtered by keywords and the panel offers **Download model (1.2 GB)** (*Pobierz model (1,2 GB)*). Neither selecting the format nor a `.env` file nor **Test** (*Testuj*) starts a download.
+
 #### What changes
 
 With a server (request formats `simple` and `basal`) the text leaves the browser for a process you install and start yourself:
@@ -397,28 +399,33 @@ sequenceDiagram
 `body` is the request basal-serve gets: the text and the list of topics. The service worker sums the probabilities of the selected topics and compares the sum with the threshold of the chosen **Sensitivity**.
 
 - **One decision at a time.** The model computes them one after another, so the service worker waits up to 30 s for an answer (`BUILTIN_TIMEOUT_MS`; a server gets 4 s).
-- **When the model does not answer** (it is still downloading, there is no WebGPU, it failed), the request fails with `modelLoading`, `noWebGPU` or `modelFailed` and the page uses keywords for 30 s, as with a server that is down.
+- **When the model does not answer** (the file is not downloaded, it is still downloading, there is no WebGPU, it failed), the request fails with `modelMissing`, `modelLoading`, `noWebGPU` or `modelFailed` and the page uses keywords for 30 s, as with a server that is down.
 - **Keywords still work.** In the *Keywords + AI* mode a keyword match hides the content at once, without asking the model.
 
 #### Life of the offscreen document
 
-Chrome stops a service worker after 30 s without events, so it cannot hold the model. An [offscreen document](https://developer.chrome.com/docs/extensions/reference/api/offscreen), a hidden page of the extension, holds it instead; the service worker opens and closes that page as the settings say.
+Chrome stops a service worker after 30 s without events, so it cannot hold the model. An [offscreen document](https://developer.chrome.com/docs/extensions/reference/api/offscreen), a hidden page of the extension, holds it instead; the service worker opens and closes that page as the settings and the state of the model file say.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Closed
-    Closed --> Loading: filter, AI model and builtin format on
-    Loading --> Ready: model loaded
-    Loading --> Error: no WebGPU or download failed
-    Error --> Loading: next request
-    Ready --> Closed: filter, AI model or builtin format off
-    Loading --> Closed: switched off
-    Error --> Closed: switched off
+    [*] --> Missing
+    Missing --> Downloading: Download model clicked
+    Downloading --> Loading: file stored
+    Downloading --> Failed: no WebGPU or download failed
+    Failed --> Downloading: Download model clicked
+    Loading --> Ready: model in memory
+    Ready --> Stored: filter, AI model or builtin format off
+    Stored --> Loading: filter, AI model and builtin format on
+    Stored --> Missing: browser removed the file
 ```
 
-- **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings change.
-- **Only as the settings say.** With the filter or the AI model off, **Test** (*Testuj*) does not open the document: it says the built-in model runs only while they are on (`builtinOff`) instead of starting the download. A document opened by a request just as the settings were switched off is closed again at once.
-- **First use.** *Loading* is then a download of 1.17 GB from Hugging Face (a pinned revision) into the extension's own storage; it took 76–83 s. Meanwhile **Test** (*Testuj*) shows the progress and pages are filtered by keywords.
+The document is open in *Downloading*, *Loading* and *Ready* and closed in *Missing*, *Failed* and *Stored*.
+
+- **The state of the file** is kept by the service worker in `chrome.storage.local` (key `builtinModel`): `requested` after the click, `stored` once the document reports the complete file, `failed` with the error when the download did not work; no record means the file is missing. A file that is in the storage without a record (downloaded by an earlier version) is found when the panel is opened and used as it is.
+- **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings or that record change. A download that was asked for runs whatever the filter and the AI switch say, and it continues when the panel is closed.
+- **Download.** 1.17 GB from Hugging Face (a pinned revision) into the extension's own storage; it took 76–83 s. The panel shows the percent; pages are filtered by keywords meanwhile. WebGPU is checked first, so a browser without it downloads nothing.
+- **Nothing is downloaded again by itself.** A failed download is shown in the panel with the button, and stays failed after a browser restart. If the browser removes the stored file, the next start notices it, the model is off again and the button is back. Only a download that was interrupted by closing the browser starts again at the next start, from the beginning.
+- **Only as the settings say.** With the filter or the AI model off, **Test** (*Testuj*) does not open the document: it says the built-in model runs only while they are on (`builtinOff`) instead of loading the model. A document opened by a request just as the settings were switched off is closed again at once.
 - **Later starts** read the file from that storage, without a request to the server. The document opens 0.5 s after the browser starts and the model is ready after 1.0–2.3 s; the first decision or two take 1.4–1.6 s while the weights are read.
 - **No time limit.** The document stays open as long as the settings ask for it. In a test the service worker was stopped after 34 s without events, and the same document, with the model in memory, was still open when the test ended after 150 s.
 - **Closing frees the memory** (see [Memory](#memory)).
@@ -461,7 +468,10 @@ In Brave 156 without a window, driven over the DevTools protocol, with the exten
 | Check | Result |
 | --- | --- |
 | Browser start, nothing else done | document open after 0.5 s, model ready after 1.0–2.3 s |
-| First download of the model | 76–83 s, then no further request |
+| Built-in format selected, model not downloaded | no offscreen document, no request; pages and **Test** get `modelMissing` |
+| **Download model** with Hugging Face unreachable | error and the button in the panel; nothing retried, also after a browser restart |
+| **Download model** | percent shown in the panel, 76–83 s, then no further request |
+| Stored file deleted behind the extension's back | noticed at the next start; not downloaded again, the button is back |
 | Service worker stopped | the model is not loaded again; the next decision took 0.35–0.75 s |
 | AI model switched off | document closed |
 | A page with 6 articles that match no keyword | 3 hidden with *(powód: …, AI – tekst)*, 3 neutral ones shown |
@@ -473,9 +483,8 @@ In Brave 156 without a window, driven over the DevTools protocol, with the exten
 - **Other graphics cards** than Apple's were not tested.
 - **Scores differ from basal-serve's.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
 - **Diluted texts.** A sentence about an accident followed by a long neutral text is judged neutral. basal-serve does the same.
-- **Download progress** is shown only after a click on **Test** (*Testuj*).
-- **Disk space.** The model file (1.17 GB) stays in the extension's storage when you switch to another request format, so switching back does not download it again. It is deleted together with the extension; the panel has no button to delete it alone.
-- **An interrupted download** (the AI model switched off, the browser closed) is not resumed: the next one starts from the beginning.
+- **A download cannot be resumed.** Closing the browser, or switching to another request format, during a download starts it from the beginning next time.
+- **Disk space.** The model file (1.17 GB) stays in the extension's storage when you switch the built-in model off or pick another request format, so switching back does not download it again. It is deleted together with the extension; the panel has no button to delete it alone.
 
 `vendor/wllama/` is written by `python3 tools/vendor_wllama.py`, which downloads the pinned npm package, checks its SHA-512 and copies the library, its WebAssembly binary and its licence unchanged.
 
@@ -597,7 +606,7 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 
 ## Privacy
 
-- No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face when you choose the [built-in model](#built-in-model-no-server); it carries no page content.
+- No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face, which starts when you click **Download model** for the [built-in model](#built-in-model-no-server); it carries no page content.
 - Settings are stored only in `chrome.storage.local`.
 - Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
 - The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.

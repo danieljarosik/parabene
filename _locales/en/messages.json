@@ -301,8 +301,44 @@
     "message": "When the model does not respond, ParaBene automatically falls back to keywords.",
     "description": "Help text under the endpoint input."
   },
+  "aiModelMissing": {
+    "message": "The model is not downloaded. Until you download it, the built-in model is off and pages are filtered by keywords.",
+    "description": "Built-in model: the model file is not in the storage of the extension yet."
+  },
+  "aiModelDownload": {
+    "message": "Download model (1.2 GB)",
+    "description": "Button that starts the download of the file of the built-in model."
+  },
+  "aiModelDownloading": {
+    "message": "Downloading the model: $percent$%. You can close this panel.",
+    "description": "Built-in model: download in progress.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "aiModelLoading": {
+    "message": "The model is downloaded. Loading it into memory…",
+    "description": "Built-in model: the file is stored and is being loaded."
+  },
+  "aiModelStored": {
+    "message": "The model is downloaded.",
+    "description": "Built-in model: the model file is in the storage of the extension."
+  },
+  "aiModelFailed": {
+    "message": "The model does not work: $error$",
+    "description": "Built-in model: the download or the start failed; the placeholder is one of the aiError_* messages.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "the download failed: network error"
+      }
+    }
+  },
   "aiBuiltinHint": {
-    "message": "The model runs in your browser on the graphics card (WebGPU). On first use it downloads about 1.2 GB from Hugging Face; page text never leaves the browser.",
+    "message": "The model runs in your browser on the graphics card (WebGPU). The model file (about 1.2 GB) is downloaded from Hugging Face only when you click “Download model”; page text never leaves the browser.",
     "description": "Help text shown when the built-in model is selected (Hugging Face is the name of the site the model file comes from)."
   },
   "aiErrorInvalidUrl": {
@@ -412,6 +448,20 @@
       "detail": {
         "content": "$1",
         "example": "out of memory"
+      }
+    }
+  },
+  "aiError_modelMissing": {
+    "message": "the model is not downloaded — click “Download model”",
+    "description": "Built-in model error: the model file has not been downloaded (the quoted text is the label of the aiModelDownload button, without the size)."
+  },
+  "aiError_downloadFailed": {
+    "message": "the download failed: $detail$",
+    "description": "Built-in model error: the model file could not be downloaded.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "Failed to fetch"
       }
     }
   },

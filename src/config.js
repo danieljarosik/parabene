@@ -28,8 +28,10 @@
    * an offscreen document the service worker opens once and keeps in the background
    * (offscreen/offscreen.js). llama.cpp compiled to WebAssembly (vendor/wllama) runs the GGUF file
    * on the GPU through WebGPU; there is no CPU fallback (a decision takes 4–20 s on the CPU).
-   * The model file is downloaded once from Hugging Face (a pinned revision) into the extension's
-   * own storage; page text never leaves the browser. It asks the same question as the basal
+   * The model file (1.17 GB) comes from Hugging Face (a pinned revision) and is kept in the
+   * extension's own storage; page text never leaves the browser. It is downloaded only when the
+   * user clicks "Download model" in the panel; until the file is stored the built-in model is off
+   * and keywords are used (see BUILTIN_STORAGE_KEY). It asks the same question as the basal
    * protocol, so sensitivity and topics apply.
    * Measured on an Apple M4 Pro: 0.33 s for a short text, 0.53 s for 500 characters, 1.2 s for
    * 2,000; decisions are made one at a time, hence the generous timeout.
@@ -42,6 +44,17 @@
   const BUILTIN_TIMEOUT_MS = 30000;
   /** Tokens of context: 2,000 characters of Polish text are ~500 tokens with the question. */
   const BUILTIN_CONTEXT = 4096;
+
+  /**
+   * What the service worker knows about the model file, in chrome.storage.local:
+   * { url, state, error? }, valid only for the current BUILTIN_MODEL_URL. No record = "missing".
+   * - requested: the user clicked "Download model"; the offscreen document may download the file,
+   * - stored:    the offscreen document found the complete file in its storage; the model is used,
+   * - failed:    the download (or the check for WebGPU before it) failed, with `error`; the user
+   *              has to click again — nothing is downloaded again by itself.
+   */
+  const BUILTIN_STORAGE_KEY = 'builtinModel';
+  const BUILTIN_STATES = Object.freeze(['requested', 'stored', 'failed']);
 
   /** Protocols that ask the basal question (sensitivity and topics apply to them). */
   function usesBasalQuestion(protocol) {
@@ -203,8 +216,14 @@
     LEARN_COMMIT: 'parabene:learnCommit',
     LEARN_CANCEL: 'parabene:learnCancel',
     LEARN_FORGET: 'parabene:learnForget',
+    // panel → service worker (the built-in model's file)
+    MODEL_STATUS: 'parabene:modelStatus',
+    MODEL_DOWNLOAD: 'parabene:modelDownload',
+    // offscreen document → service worker: the file is stored / missing / could not be downloaded
+    MODEL_STATE: 'parabene:modelState',
     // service worker → offscreen document (the built-in model)
     BUILTIN_LOAD: 'parabene:builtin:load',
+    BUILTIN_STATUS: 'parabene:builtin:status',
     BUILTIN_EVALUATE: 'parabene:builtin:evaluate',
   });
 
@@ -428,6 +447,8 @@
     BUILTIN_PAGE,
     BUILTIN_TIMEOUT_MS,
     BUILTIN_CONTEXT,
+    BUILTIN_STORAGE_KEY,
+    BUILTIN_STATES,
     usesBasalQuestion,
     AI_MODES,
     DEFAULT_AI_MODE,
