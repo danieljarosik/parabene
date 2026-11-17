@@ -349,6 +349,7 @@
       if (match) {
         pass(el, result, match);
         state.hiddenItems.set(el, { text });
+        logVerdict(text, result, { learned: true });
         queueImageCheck(el);
       } else if (result.hide) {
         const previous = hiddenSource(el);
@@ -359,10 +360,11 @@
         // Logged once per content: again when hidden for another reason, or when the page reused
         // the element for other content.
         const sameItem = previous === hiddenSource(el) && !byImage && known && sameContent(known.text || '', text);
-        if (!sameItem) logHidden(text, result);
+        if (!sameItem) logVerdict(text, result);
       } else {
         // A container hidden because of its picture stays hidden until the picture is judged again.
         if (heldByText(el)) unhide(el);
+        logVerdict(text, result);
         queueImageCheck(el);
       }
     } else if (!stale && !result) {
@@ -630,7 +632,7 @@
         const known = state.hiddenItems.get(el);
         const isNew = !hiddenByImage(el) || !known || known.image !== verdict.image;
         hide(el, verdict);
-        if (isNew) logHidden(text, verdict);
+        if (isNew) logVerdict(text, verdict);
         state.hiddenItems.set(el, { text, image: verdict.image });
       } else if (passed) {
         pass(el, passed.result, passed.match);
@@ -1278,11 +1280,13 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Log of hidden content (opt-in, kept by the service worker)          */
+  /* Log of evaluated content (opt-in, kept by the service worker)       */
   /* ------------------------------------------------------------------ */
 
   function logEvent(type, entry) {
     if (!state.settings || !state.settings.logEnabled || !isContextAlive()) return;
+    // Nothing from a private window is written down.
+    if (chrome.extension && chrome.extension.inIncognitoContext) return;
     try {
       chrome.runtime.sendMessage({ type, entry }).catch(() => {});
     } catch (_) {
@@ -1290,11 +1294,18 @@
     }
   }
 
-  function logHidden(text, result) {
+  /**
+   * One evaluated content for the log and the statistics page: every text that was judged, hidden
+   * or shown (`learned`: a hide verdict that a learned example let through), and every picture
+   * that hid its container.
+   */
+  function logVerdict(text, result, { learned = false } = {}) {
     const settings = state.settings;
     const entry = {
       time: new Date().toISOString(),
       url: location.href,
+      hidden: result.hide === true,
+      learned,
       source: result.source === 'ai' ? 'ai' : 'keyword',
       mode: settings.aiEnabled ? settings.aiMode : 'keywords',
       reason: result.reason || '',
@@ -1307,7 +1318,7 @@
       entry.image = result.image;
     }
     if (result.details) entry.details = result.details;
-    logEvent(Config.MSG.LOG_HIDDEN, entry);
+    logEvent(Config.MSG.LOG_VERDICT, entry);
   }
 
   function currentStats() {

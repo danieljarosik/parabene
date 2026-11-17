@@ -934,28 +934,28 @@
     }
   },
   "logTitle": {
-    "message": "Log of hidden content",
-    "description": "Heading of the card with the log of hidden content."
+    "message": "Log of evaluations and statistics",
+    "description": "Title of the card of the log of evaluated content."
   },
   "logToggleName": {
-    "message": "Record hidden content",
-    "description": "Name of the switch that turns the log of hidden content on."
+    "message": "Record evaluated content",
+    "description": "Switch that turns the log of evaluated content on (also on the statistics page)."
   },
   "logDesc": {
-    "message": "Text, page address and reason (keywords or AI) — kept locally only, downloadable as a file for analysis.",
-    "description": "Explains what the log of hidden content records."
+    "message": "Every evaluated text, the page address and the verdict (keywords or AI) — only locally, to look through on the statistics page.",
+    "description": "What the log records."
   },
   "logOff": {
     "message": "The log is off.",
     "description": "Shown when the log is off and empty."
   },
   "logEmpty": {
-    "message": "No entries yet — hidden content will be recorded while you browse.",
-    "description": "Shown when the log is on but empty."
+    "message": "No entries — evaluations will be recorded while you browse.",
+    "description": "The log is on and empty."
   },
   "logDownload": {
     "message": "Download file (.jsonl)",
-    "description": "Button that downloads the log as a JSON Lines file."
+    "description": "Button on the statistics page that exports the log as a JSON Lines file."
   },
   "logClear": {
     "message": "Clear log",
@@ -976,23 +976,439 @@
     }
   },
   "logSummary": {
-    "message": "Keywords: $keyword$ · AI (text): $aitext$ · AI (picture): $aiimage$ · shown anyway: $revealed$.",
-    "description": "Summary of the log: entries hidden by keywords, by the AI text model, by the AI image model, and how many the user revealed with 'Show anyway'.",
+    "message": "Evaluated: $total$ · hidden: $hidden$ · shown: $shown$ · corrections: $corrected$.",
+    "description": "Summary of the log in the panel.",
     "placeholders": {
-      "keyword": {
+      "total": {
         "content": "$1",
-        "example": "30"
+        "example": "240"
       },
-      "aitext": {
+      "hidden": {
+        "content": "$2",
+        "example": "31"
+      },
+      "shown": {
+        "content": "$3",
+        "example": "209"
+      },
+      "corrected": {
+        "content": "$4",
+        "example": "4"
+      }
+    }
+  },
+  "logOpenStats": {
+    "message": "Open statistics",
+    "description": "Button in the panel that opens the statistics page in a tab."
+  },
+  "logReadFailed": {
+    "message": "Could not read the log: $error$",
+    "description": "The log database could not be read.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "statsTitle": {
+    "message": "ParaBene — statistics",
+    "description": "Title of the statistics page (ParaBene is the product name)."
+  },
+  "statsLead": {
+    "message": "What ParaBene evaluated while you browsed, and with what result. The data stays in this browser.",
+    "description": "Introduction of the statistics page."
+  },
+  "statsLogOffNote": {
+    "message": "Recording is off — new evaluations are not added.",
+    "description": "Notice on the statistics page: the log is off but has entries."
+  },
+  "statsLogOffEmpty": {
+    "message": "Recording is off. Turn on “Record evaluated content” and browse — the evaluations will appear here.",
+    "description": "Notice on the statistics page: the log is off and empty (the quoted text is the logToggleName message)."
+  },
+  "statsEmpty": {
+    "message": "No entries.",
+    "description": "Empty state of a table or list on the statistics page."
+  },
+  "statsNoMatch": {
+    "message": "No entry matches the filters.",
+    "description": "Empty state of the entries list when filters exclude everything."
+  },
+  "statsReadFailed": {
+    "message": "Could not read the log: $error$",
+    "description": "Error on the statistics page.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "statsWriteFailed": {
+    "message": "Could not save the correction: $error$",
+    "description": "Error on the statistics page.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "statsTileEvaluated": {
+    "message": "Evaluated",
+    "description": "Headline number: all evaluated contents."
+  },
+  "statsTileHidden": {
+    "message": "Hidden",
+    "description": "Headline number: hidden contents."
+  },
+  "statsTileShown": {
+    "message": "Shown",
+    "description": "Headline number: contents that were not hidden."
+  },
+  "statsTileCorrected": {
+    "message": "Your corrections",
+    "description": "Headline number: verdicts the user corrected."
+  },
+  "statsTilePeriod": {
+    "message": "Period",
+    "description": "Headline: the dates of the oldest and newest entry."
+  },
+  "statsShare": {
+    "message": "$percent$% of evaluated",
+    "description": "Share under a headline number.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "13"
+      }
+    }
+  },
+  "statsSites": {
+    "message": "sites: $count$",
+    "description": "Number of sites under the period.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "statsSourcesTitle": {
+    "message": "Who decided",
+    "description": "Title of the table by source of the verdict."
+  },
+  "statsColSource": {
+    "message": "Source",
+    "description": "Column and filter: what gave the verdict."
+  },
+  "statsColEvaluated": {
+    "message": "Evaluated",
+    "description": "Column: number of evaluated contents."
+  },
+  "statsColHidden": {
+    "message": "Hidden",
+    "description": "Column: number of hidden contents."
+  },
+  "statsColShown": {
+    "message": "Shown",
+    "description": "Column: number of contents not hidden."
+  },
+  "statsColCorrected": {
+    "message": "Corrected",
+    "description": "Column: number of corrected verdicts."
+  },
+  "statsSource_keyword": {
+    "message": "Keywords",
+    "description": "Source of a verdict: the keyword list."
+  },
+  "statsSource_aiText": {
+    "message": "AI (text)",
+    "description": "Source of a verdict: the AI text model."
+  },
+  "statsSource_aiImage": {
+    "message": "AI (picture)",
+    "description": "Source of a verdict: the AI image model."
+  },
+  "statsSource_fallback": {
+    "message": "Keywords (AI unavailable)",
+    "description": "Source of a verdict: keywords used because the AI model did not answer."
+  },
+  "statsScoresTitle": {
+    "message": "Scores of the AI model (text)",
+    "description": "Title of the histogram of hide scores."
+  },
+  "statsScoresHint": {
+    "message": "Number of texts ($count$) by score from 0 to 1. Current hide threshold: $threshold$.",
+    "description": "Explanation of the histogram.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "180"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
+  "statsScoresAria": {
+    "message": "Histogram of the scores of $count$ texts; hide threshold $threshold$. The numbers are in the table below.",
+    "description": "Accessible name of the histogram.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "180"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
+  "statsScoresEmpty": {
+    "message": "No evaluations by the AI model with a score.",
+    "description": "Empty state of the histogram."
+  },
+  "statsScoresTable": {
+    "message": "Show the numbers",
+    "description": "Opens the table with the numbers of the histogram."
+  },
+  "statsLegendHidden": {
+    "message": "hidden",
+    "description": "Legend of the histogram."
+  },
+  "statsLegendShown": {
+    "message": "shown",
+    "description": "Legend of the histogram."
+  },
+  "statsLegendThreshold": {
+    "message": "current threshold",
+    "description": "Legend of the histogram: the dashed line."
+  },
+  "statsColRange": {
+    "message": "Score",
+    "description": "Column of the histogram table: the score range."
+  },
+  "statsBinTip": {
+    "message": "Score $range$ — hidden: $hidden$, shown: $shown$",
+    "description": "Tooltip of a histogram column.",
+    "placeholders": {
+      "range": {
+        "content": "$1",
+        "example": "0.5–0.6"
+      },
+      "hidden": {
         "content": "$2",
         "example": "12"
       },
-      "aiimage": {
+      "shown": {
         "content": "$3",
-        "example": "4"
+        "example": "3"
+      }
+    }
+  },
+  "statsSitesTitle": {
+    "message": "Sites",
+    "description": "Title of the table of sites."
+  },
+  "statsColSite": {
+    "message": "Site",
+    "description": "Column and filter: the site (host name)."
+  },
+  "statsColShare": {
+    "message": "Share hidden",
+    "description": "Column: percent of hidden contents on the site."
+  },
+  "statsSitesAll": {
+    "message": "Show all sites ($count$)",
+    "description": "Button under the table of sites.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "34"
+      }
+    }
+  },
+  "statsSiteUnknown": {
+    "message": "(unknown)",
+    "description": "A site without a host name."
+  },
+  "statsSiteFilter": {
+    "message": "Show the entries of this site",
+    "description": "Tooltip of a site name."
+  },
+  "statsEntriesTitle": {
+    "message": "Entries",
+    "description": "Title of the list of evaluated contents."
+  },
+  "statsFilterVerdict": {
+    "message": "Verdict",
+    "description": "Filter: hidden or shown."
+  },
+  "statsFilterLabel": {
+    "message": "Corrections",
+    "description": "Filter: corrected or not."
+  },
+  "statsFilterSearch": {
+    "message": "Search",
+    "description": "Label of the search field."
+  },
+  "statsSearchPlaceholder": {
+    "message": "text or address",
+    "description": "Placeholder of the search field."
+  },
+  "statsAll": {
+    "message": "All",
+    "description": "Filter option: no restriction."
+  },
+  "statsAllSites": {
+    "message": "All sites",
+    "description": "Site filter option: no restriction."
+  },
+  "statsVerdictHidden": {
+    "message": "Hidden",
+    "description": "Filter option."
+  },
+  "statsVerdictShown": {
+    "message": "Shown",
+    "description": "Filter option."
+  },
+  "statsLabelCorrected": {
+    "message": "Corrected only",
+    "description": "Filter option."
+  },
+  "statsLabelUncorrected": {
+    "message": "Not corrected",
+    "description": "Filter option."
+  },
+  "statsFound": {
+    "message": "Matching entries: $found$ of $total$",
+    "description": "Count above the list.",
+    "placeholders": {
+      "found": {
+        "content": "$1",
+        "example": "42"
       },
-      "revealed": {
-        "content": "$4",
+      "total": {
+        "content": "$2",
+        "example": "240"
+      }
+    }
+  },
+  "statsPage": {
+    "message": "$from$–$to$ of $total$",
+    "description": "Pager: which entries are shown.",
+    "placeholders": {
+      "from": {
+        "content": "$1",
+        "example": "51"
+      },
+      "to": {
+        "content": "$2",
+        "example": "100"
+      },
+      "total": {
+        "content": "$3",
+        "example": "240"
+      }
+    }
+  },
+  "statsNewer": {
+    "message": "← Newer",
+    "description": "Pager button."
+  },
+  "statsOlder": {
+    "message": "Older →",
+    "description": "Pager button."
+  },
+  "statsBadgeHidden": {
+    "message": "Hidden",
+    "description": "Verdict badge of an entry."
+  },
+  "statsBadgeShown": {
+    "message": "Shown",
+    "description": "Verdict badge of an entry."
+  },
+  "statsScore": {
+    "message": "score $score$ (threshold $threshold$)",
+    "description": "The model score of an entry and the threshold at that time.",
+    "placeholders": {
+      "score": {
+        "content": "$1",
+        "example": "0.81"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
+  "statsScoreOnly": {
+    "message": "score $score$",
+    "description": "The model score of an entry.",
+    "placeholders": {
+      "score": {
+        "content": "$1",
+        "example": "0.81"
+      }
+    }
+  },
+  "statsTopicNone": {
+    "message": "other",
+    "description": "The topic \"none of the hidden topics\" in the list of probabilities."
+  },
+  "statsOpenPage": {
+    "message": "Open the page in a new tab",
+    "description": "Tooltip of the link to the page of an entry."
+  },
+  "statsNoText": {
+    "message": "(no text — a picture was judged)",
+    "description": "An entry without text."
+  },
+  "statsMore": {
+    "message": "Show the whole text",
+    "description": "Expands an entry."
+  },
+  "statsLess": {
+    "message": "Collapse",
+    "description": "Collapses an entry."
+  },
+  "statsMarkShow": {
+    "message": "Should not be hidden",
+    "description": "Correction button on a hidden entry."
+  },
+  "statsMarkHide": {
+    "message": "Should be hidden",
+    "description": "Correction button on a shown entry."
+  },
+  "statsLabelShow": {
+    "message": "Correction: should not be hidden",
+    "description": "A corrected entry."
+  },
+  "statsLabelHide": {
+    "message": "Correction: should be hidden",
+    "description": "A corrected entry."
+  },
+  "statsUndo": {
+    "message": "Undo",
+    "description": "Takes a correction back."
+  },
+  "statsFlagRevealed": {
+    "message": "shown anyway",
+    "description": "Flag of an entry: the user clicked \"Show anyway\"."
+  },
+  "statsFlagLearned": {
+    "message": "let through by learning",
+    "description": "Flag of an entry: a learned example let it through."
+  },
+  "statsFlagRepeated": {
+    "message": "seen $count$ times",
+    "description": "Flag of an entry evaluated more than once.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
         "example": "3"
       }
     }

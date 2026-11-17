@@ -934,28 +934,28 @@
     }
   },
   "logTitle": {
-    "message": "Dziennik ukrytych treści",
-    "description": "Heading of the card with the log of hidden content."
+    "message": "Dziennik ocen i statystyki",
+    "description": "Title of the card of the log of evaluated content."
   },
   "logToggleName": {
-    "message": "Zapisuj ukryte treści",
-    "description": "Name of the switch that turns the log of hidden content on."
+    "message": "Zapisuj ocenione treści",
+    "description": "Switch that turns the log of evaluated content on (also on the statistics page)."
   },
   "logDesc": {
-    "message": "Tekst, adres strony i powód (słowa kluczowe lub AI) — tylko lokalnie, do pobrania jako plik do analizy.",
-    "description": "Explains what the log of hidden content records."
+    "message": "Każdy oceniony tekst, adres strony i wynik (słowa kluczowe lub AI) — tylko lokalnie, do przejrzenia na stronie statystyk.",
+    "description": "What the log records."
   },
   "logOff": {
     "message": "Dziennik jest wyłączony.",
     "description": "Shown when the log is off and empty."
   },
   "logEmpty": {
-    "message": "Brak wpisów — ukryte treści będą zapisywane podczas przeglądania.",
-    "description": "Shown when the log is on but empty."
+    "message": "Brak wpisów — oceny będą zapisywane podczas przeglądania.",
+    "description": "The log is on and empty."
   },
   "logDownload": {
     "message": "Pobierz plik (.jsonl)",
-    "description": "Button that downloads the log as a JSON Lines file."
+    "description": "Button on the statistics page that exports the log as a JSON Lines file."
   },
   "logClear": {
     "message": "Wyczyść dziennik",
@@ -976,23 +976,439 @@
     }
   },
   "logSummary": {
-    "message": "Słowa kluczowe: $keyword$ · AI (tekst): $aitext$ · AI (grafika): $aiimage$ · pokazane mimo wszystko: $revealed$.",
-    "description": "Summary of the log: entries hidden by keywords, by the AI text model, by the AI image model, and how many the user revealed with 'Show anyway'.",
+    "message": "Ocenione: $total$ · ukryte: $hidden$ · pokazane: $shown$ · poprawki: $corrected$.",
+    "description": "Summary of the log in the panel.",
     "placeholders": {
-      "keyword": {
+      "total": {
         "content": "$1",
-        "example": "30"
+        "example": "240"
       },
-      "aitext": {
+      "hidden": {
+        "content": "$2",
+        "example": "31"
+      },
+      "shown": {
+        "content": "$3",
+        "example": "209"
+      },
+      "corrected": {
+        "content": "$4",
+        "example": "4"
+      }
+    }
+  },
+  "logOpenStats": {
+    "message": "Otwórz statystyki",
+    "description": "Button in the panel that opens the statistics page in a tab."
+  },
+  "logReadFailed": {
+    "message": "Nie udało się odczytać dziennika: $error$",
+    "description": "The log database could not be read.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "statsTitle": {
+    "message": "ParaBene — statystyki",
+    "description": "Title of the statistics page (ParaBene is the product name)."
+  },
+  "statsLead": {
+    "message": "Co ParaBene oceniło podczas przeglądania i z jakim wynikiem. Dane są tylko w tej przeglądarce.",
+    "description": "Introduction of the statistics page."
+  },
+  "statsLogOffNote": {
+    "message": "Zapis jest wyłączony — nowe oceny nie są dodawane.",
+    "description": "Notice on the statistics page: the log is off but has entries."
+  },
+  "statsLogOffEmpty": {
+    "message": "Zapis jest wyłączony. Włącz „Zapisuj ocenione treści” i przeglądaj strony — oceny pojawią się tutaj.",
+    "description": "Notice on the statistics page: the log is off and empty (the quoted text is the logToggleName message)."
+  },
+  "statsEmpty": {
+    "message": "Brak wpisów.",
+    "description": "Empty state of a table or list on the statistics page."
+  },
+  "statsNoMatch": {
+    "message": "Żaden wpis nie pasuje do filtrów.",
+    "description": "Empty state of the entries list when filters exclude everything."
+  },
+  "statsReadFailed": {
+    "message": "Nie udało się odczytać dziennika: $error$",
+    "description": "Error on the statistics page.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "statsWriteFailed": {
+    "message": "Nie udało się zapisać poprawki: $error$",
+    "description": "Error on the statistics page.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "statsTileEvaluated": {
+    "message": "Ocenione treści",
+    "description": "Headline number: all evaluated contents."
+  },
+  "statsTileHidden": {
+    "message": "Ukryte",
+    "description": "Headline number: hidden contents."
+  },
+  "statsTileShown": {
+    "message": "Pokazane",
+    "description": "Headline number: contents that were not hidden."
+  },
+  "statsTileCorrected": {
+    "message": "Twoje poprawki",
+    "description": "Headline number: verdicts the user corrected."
+  },
+  "statsTilePeriod": {
+    "message": "Okres",
+    "description": "Headline: the dates of the oldest and newest entry."
+  },
+  "statsShare": {
+    "message": "$percent$% ocenionych",
+    "description": "Share under a headline number.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "13"
+      }
+    }
+  },
+  "statsSites": {
+    "message": "strony: $count$",
+    "description": "Number of sites under the period.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "statsSourcesTitle": {
+    "message": "Kto zdecydował",
+    "description": "Title of the table by source of the verdict."
+  },
+  "statsColSource": {
+    "message": "Źródło",
+    "description": "Column and filter: what gave the verdict."
+  },
+  "statsColEvaluated": {
+    "message": "Ocenione",
+    "description": "Column: number of evaluated contents."
+  },
+  "statsColHidden": {
+    "message": "Ukryte",
+    "description": "Column: number of hidden contents."
+  },
+  "statsColShown": {
+    "message": "Pokazane",
+    "description": "Column: number of contents not hidden."
+  },
+  "statsColCorrected": {
+    "message": "Poprawione",
+    "description": "Column: number of corrected verdicts."
+  },
+  "statsSource_keyword": {
+    "message": "Słowa kluczowe",
+    "description": "Source of a verdict: the keyword list."
+  },
+  "statsSource_aiText": {
+    "message": "AI (tekst)",
+    "description": "Source of a verdict: the AI text model."
+  },
+  "statsSource_aiImage": {
+    "message": "AI (grafika)",
+    "description": "Source of a verdict: the AI image model."
+  },
+  "statsSource_fallback": {
+    "message": "Słowa kluczowe (AI niedostępne)",
+    "description": "Source of a verdict: keywords used because the AI model did not answer."
+  },
+  "statsScoresTitle": {
+    "message": "Wyniki modelu AI (tekst)",
+    "description": "Title of the histogram of hide scores."
+  },
+  "statsScoresHint": {
+    "message": "Liczba tekstów ($count$) według wyniku od 0 do 1. Obecny próg ukrywania: $threshold$.",
+    "description": "Explanation of the histogram.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "180"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
+  "statsScoresAria": {
+    "message": "Histogram wyników $count$ tekstów; próg ukrywania $threshold$. Liczby są w tabeli poniżej.",
+    "description": "Accessible name of the histogram.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "180"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
+  "statsScoresEmpty": {
+    "message": "Brak ocen modelu AI z wynikiem.",
+    "description": "Empty state of the histogram."
+  },
+  "statsScoresTable": {
+    "message": "Pokaż liczby",
+    "description": "Opens the table with the numbers of the histogram."
+  },
+  "statsLegendHidden": {
+    "message": "ukryte",
+    "description": "Legend of the histogram."
+  },
+  "statsLegendShown": {
+    "message": "pokazane",
+    "description": "Legend of the histogram."
+  },
+  "statsLegendThreshold": {
+    "message": "obecny próg",
+    "description": "Legend of the histogram: the dashed line."
+  },
+  "statsColRange": {
+    "message": "Wynik",
+    "description": "Column of the histogram table: the score range."
+  },
+  "statsBinTip": {
+    "message": "Wynik $range$ — ukryte: $hidden$, pokazane: $shown$",
+    "description": "Tooltip of a histogram column.",
+    "placeholders": {
+      "range": {
+        "content": "$1",
+        "example": "0.5–0.6"
+      },
+      "hidden": {
         "content": "$2",
         "example": "12"
       },
-      "aiimage": {
+      "shown": {
         "content": "$3",
-        "example": "4"
+        "example": "3"
+      }
+    }
+  },
+  "statsSitesTitle": {
+    "message": "Strony",
+    "description": "Title of the table of sites."
+  },
+  "statsColSite": {
+    "message": "Strona",
+    "description": "Column and filter: the site (host name)."
+  },
+  "statsColShare": {
+    "message": "Udział ukrytych",
+    "description": "Column: percent of hidden contents on the site."
+  },
+  "statsSitesAll": {
+    "message": "Pokaż wszystkie strony ($count$)",
+    "description": "Button under the table of sites.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "34"
+      }
+    }
+  },
+  "statsSiteUnknown": {
+    "message": "(nieznana)",
+    "description": "A site without a host name."
+  },
+  "statsSiteFilter": {
+    "message": "Pokaż wpisy z tej strony",
+    "description": "Tooltip of a site name."
+  },
+  "statsEntriesTitle": {
+    "message": "Wpisy",
+    "description": "Title of the list of evaluated contents."
+  },
+  "statsFilterVerdict": {
+    "message": "Werdykt",
+    "description": "Filter: hidden or shown."
+  },
+  "statsFilterLabel": {
+    "message": "Poprawki",
+    "description": "Filter: corrected or not."
+  },
+  "statsFilterSearch": {
+    "message": "Szukaj",
+    "description": "Label of the search field."
+  },
+  "statsSearchPlaceholder": {
+    "message": "tekst lub adres",
+    "description": "Placeholder of the search field."
+  },
+  "statsAll": {
+    "message": "Wszystkie",
+    "description": "Filter option: no restriction."
+  },
+  "statsAllSites": {
+    "message": "Wszystkie strony",
+    "description": "Site filter option: no restriction."
+  },
+  "statsVerdictHidden": {
+    "message": "Ukryte",
+    "description": "Filter option."
+  },
+  "statsVerdictShown": {
+    "message": "Pokazane",
+    "description": "Filter option."
+  },
+  "statsLabelCorrected": {
+    "message": "Tylko poprawione",
+    "description": "Filter option."
+  },
+  "statsLabelUncorrected": {
+    "message": "Bez poprawek",
+    "description": "Filter option."
+  },
+  "statsFound": {
+    "message": "Pasujące wpisy: $found$ z $total$",
+    "description": "Count above the list.",
+    "placeholders": {
+      "found": {
+        "content": "$1",
+        "example": "42"
       },
-      "revealed": {
-        "content": "$4",
+      "total": {
+        "content": "$2",
+        "example": "240"
+      }
+    }
+  },
+  "statsPage": {
+    "message": "$from$–$to$ z $total$",
+    "description": "Pager: which entries are shown.",
+    "placeholders": {
+      "from": {
+        "content": "$1",
+        "example": "51"
+      },
+      "to": {
+        "content": "$2",
+        "example": "100"
+      },
+      "total": {
+        "content": "$3",
+        "example": "240"
+      }
+    }
+  },
+  "statsNewer": {
+    "message": "← Nowsze",
+    "description": "Pager button."
+  },
+  "statsOlder": {
+    "message": "Starsze →",
+    "description": "Pager button."
+  },
+  "statsBadgeHidden": {
+    "message": "Ukryte",
+    "description": "Verdict badge of an entry."
+  },
+  "statsBadgeShown": {
+    "message": "Pokazane",
+    "description": "Verdict badge of an entry."
+  },
+  "statsScore": {
+    "message": "wynik $score$ (próg $threshold$)",
+    "description": "The model score of an entry and the threshold at that time.",
+    "placeholders": {
+      "score": {
+        "content": "$1",
+        "example": "0.81"
+      },
+      "threshold": {
+        "content": "$2",
+        "example": "0.5"
+      }
+    }
+  },
+  "statsScoreOnly": {
+    "message": "wynik $score$",
+    "description": "The model score of an entry.",
+    "placeholders": {
+      "score": {
+        "content": "$1",
+        "example": "0.81"
+      }
+    }
+  },
+  "statsTopicNone": {
+    "message": "inne",
+    "description": "The topic \"none of the hidden topics\" in the list of probabilities."
+  },
+  "statsOpenPage": {
+    "message": "Otwórz stronę w nowej karcie",
+    "description": "Tooltip of the link to the page of an entry."
+  },
+  "statsNoText": {
+    "message": "(bez tekstu — ocena grafiki)",
+    "description": "An entry without text."
+  },
+  "statsMore": {
+    "message": "Pokaż cały tekst",
+    "description": "Expands an entry."
+  },
+  "statsLess": {
+    "message": "Zwiń",
+    "description": "Collapses an entry."
+  },
+  "statsMarkShow": {
+    "message": "Nie powinno być ukryte",
+    "description": "Correction button on a hidden entry."
+  },
+  "statsMarkHide": {
+    "message": "Powinno być ukryte",
+    "description": "Correction button on a shown entry."
+  },
+  "statsLabelShow": {
+    "message": "Poprawka: nie powinno być ukryte",
+    "description": "A corrected entry."
+  },
+  "statsLabelHide": {
+    "message": "Poprawka: powinno być ukryte",
+    "description": "A corrected entry."
+  },
+  "statsUndo": {
+    "message": "Cofnij",
+    "description": "Takes a correction back."
+  },
+  "statsFlagRevealed": {
+    "message": "pokazane mimo wszystko",
+    "description": "Flag of an entry: the user clicked \"Show anyway\"."
+  },
+  "statsFlagLearned": {
+    "message": "przepuszczone przez samouczenie",
+    "description": "Flag of an entry: a learned example let it through."
+  },
+  "statsFlagRepeated": {
+    "message": "widziane $count$ razy",
+    "description": "Flag of an entry evaluated more than once.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
         "example": "3"
       }
     }

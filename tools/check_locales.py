@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCALES = ROOT / "_locales"
-CODE_GLOBS = ["manifest.json", "src/*.js", "popup/*.js", "popup/*.html"]
+CODE_GLOBS = ["manifest.json", "src/*.js", "popup/*.js", "popup/*.html", "stats/*.js", "stats/*.html"]
 
 # Static references to message keys in the code.
 REFERENCE_PATTERNS = [

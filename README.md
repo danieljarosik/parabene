@@ -53,7 +53,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local AI model: a classification server you run or the built-in model. **Request format** (*Format zapytań*) picks ParaBene's simple contract, [basal-serve](#basal-serve-v1basal) or the [built-in model](#built-in-model-no-server) (*Wbudowany model*), which needs no server; the address field (hidden for the built-in model) and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve or the built-in model you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
-| **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
+| **Log of evaluations and statistics** (*Dziennik ocen i statystyki*) | Off by default. When on, every evaluated text is recorded locally, hidden or shown, with its page address and verdict (keywords, AI text model or AI image model). **Open statistics** (*Otwórz statystyki*) opens a page in a tab with the numbers, the sites and the entries, where verdicts can be corrected and the log downloaded or cleared. See [Statistics and the log of evaluations](#statistics-and-the-log-of-evaluations). |
 | **Backup** (*Kopia zapasowa*) | **Export settings** (*Eksportuj ustawienia*) saves every setting, the phrases, the excluded sites and the learned examples to one file; **Import settings…** (*Importuj ustawienia…*) restores it after a summary and warnings. See [Backup and keyword files](#backup-and-keyword-files). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
@@ -100,17 +100,29 @@ parabene/
 │   ├── i18n.js            translation loader/formatter (placeholders, plural forms, DOM localization)
 │   ├── evaluators.js      ContentEvaluator, KeywordEvaluator, LocalAIEvaluator, FallbackEvaluator
 │   ├── learning.js        similarity of texts for learning from revealed content
-│   ├── backup.js          keyword files, excluded site files and settings backups
+│   ├── backup.js          keyword files, excluded site files and settings backups: formats, checks, migrations
+│   ├── store.js           the log of evaluated content: IndexedDB store, record format, .jsonl export
+│   ├── log.js             service worker's side of the log: batches the verdicts into the store, clears it
 │   ├── content.js         MutationObserver, container heuristics, hiding/restoring, "Hide" bars
 │   ├── content.css        styles for hidden blocks and the placeholder bar
-│   └── background.js      service worker: default settings, local AI proxy (text and pictures), the built-in model's offscreen document, icon badge counter, log, learned examples, translations for content scripts
+│   └── background.js      service worker: default settings, local AI proxy (text and pictures), the built-in model's offscreen document, icon badge counter, routing of log messages, learned examples, translations for content scripts
 ├── offscreen/
 │   ├── offscreen.html     background page of the built-in model (never shown)
 │   └── offscreen.js       loads the model with wllama and answers the service worker
 ├── popup/
 │   ├── popup.html
 │   ├── popup.css
-│   └── popup.js
+│   ├── popup.js
+│   └── log-card.js        the panel's card of the log: counts and the button to the statistics page
+├── stats/                 the statistics page (opened in a tab), ES modules
+│   ├── stats.html, stats.css
+│   ├── stats.js           starts the page and keeps it current
+│   ├── context.js         shared state;  format.js  helpers
+│   ├── summary.js         headline numbers, who decided
+│   ├── scores.js          distribution of the AI model's scores
+│   ├── sites.js           the sites
+│   ├── entries.js         the entries, their filters, the corrections
+│   └── actions.js         recording on/off, download, clear
 ├── vendor/
 │   └── wllama/            wllama 3.13.0 (MIT), written by tools/vendor_wllama.py
 └── tools/
@@ -129,7 +141,7 @@ class ContentEvaluator {
 }
 ```
 
-`details` carries the AI model's numbers and `fallback` marks a keyword verdict given while the model was unavailable; both are used only by the log of hidden content. Evaluators are language-neutral: `reason` is raw data (the matched phrase or the model's own text) and `category` is an id such as `profanity`. The UI turns them into text in the chosen language; errors from the local model are likewise passed around as `{ code, detail }` and translated by the panel.
+`details` carries the AI model's numbers and `fallback` marks a keyword verdict given while the model was unavailable; both are used only by the log of evaluations. Evaluators are language-neutral: `reason` is raw data (the matched phrase or the model's own text) and `category` is an id such as `profanity`. The UI turns them into text in the chosen language; errors from the local model are likewise passed around as `{ code, detail }` and translated by the panel.
 
 | Class | Role |
 | --- | --- |
@@ -574,27 +586,48 @@ Asking about several pictures in one request is not faster (~1.5 s each) and blu
 
 ---
 
-## Log of hidden content
+## Statistics and the log of evaluations
 
-Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or set `PARABENE_LOG_ENABLED=true` in `.env`) to collect material for tuning the keywords, the sensitivity and the topics. The service worker keeps the log in `chrome.storage.local` (key `hideLog`). It is written in batches once a second and holds the newest 1,000 entries, each text capped at 2,000 characters. The same text hidden for the same reason (e.g. after a page reload) is recorded once. Only items hidden after the switch is turned on are recorded, so reload the page to record what is already hidden on it.
+Turn on **Record evaluated content** (*Zapisuj ocenione treści*) in the panel or on the statistics page (or set `PARABENE_LOG_ENABLED=true` in `.env`) to see what ParaBene does while you browse and to collect material for tuning the keywords, the sensitivity and the topics. It is off by default.
 
-**Download file (.jsonl)** (*Pobierz plik*) saves `parabene-log-YYYYMMDD-HHMM.jsonl` ([JSON Lines](https://jsonlines.org/)): a header line with the version and the settings at export time, then one hidden item per line.
+**What is recorded.** Every text that is evaluated, whether it ends up hidden or shown, with the page address, who decided (keywords, the AI text model, keywords while the AI model was unavailable) and, for the AI model, its score, threshold and probabilities per topic. A picture is recorded when it hides its container. The same text judged the same way again (a page reload) is one entry with a count. Nothing is recorded from private windows, and nothing from before the switch was turned on.
+
+**Where it is kept.** In IndexedDB in the extension's own storage (`src/store.js`), written by the service worker in batches once a second (`src/log.js`). The newest 10,000 entries are kept, each text capped at 2,000 characters; corrected entries are not removed when the log is full. It never leaves the browser except as a file you download. The log of hidden content that versions up to 1.0 kept in `chrome.storage.local` (key `hideLog`) is moved into it the first time something is recorded.
+
+**The statistics page.** **Open statistics** (*Otwórz statystyki*) in the panel opens `stats/stats.html` in a tab. It shows
+
+- the numbers: evaluated, hidden, shown, your corrections, the period and the number of sites;
+- **Who decided** (*Kto zdecydował*): evaluated, hidden, shown and corrected per source;
+- **Scores of the AI model** (*Wyniki modelu AI*): how many texts fall into each tenth of the hide score, hidden and shown, with the current threshold as a line — it shows what another sensitivity would change;
+- **Sites** (*Strony*): evaluated, hidden and the share hidden on each site; a click filters the entries to that site;
+- **Entries** (*Wpisy*), newest first, 50 per page, filtered by verdict, source, site, corrections and a search in the text and address. Each entry shows the verdict, the reason, the score with the threshold at that time, the probabilities, the text, and whether you clicked **Show anyway**, whether learning let it through and how often it was seen.
+
+The page follows new evaluations while it is open, and the UI language.
+
+**Corrections.** **Should not be hidden** (*Nie powinno być ukryte*) on a hidden entry and **Should be hidden** (*Powinno być ukryte*) on a shown one store your verdict with the entry (`label`: `show` or `hide`); **Undo** (*Cofnij*) takes it back. A correction does not change the filtering: it marks the entry for the export, as labelled examples for tuning or training a model later.
+
+**Download file (.jsonl)** (*Pobierz plik*) on the statistics page saves `parabene-log-YYYYMMDD-HHMM.jsonl` ([JSON Lines](https://jsonlines.org/)): a header line with the version and the settings at export time, then one evaluation per line, oldest first. **Clear log** (*Wyczyść dziennik*, click twice) deletes all entries, corrected ones included.
 
 ```json
-{"type":"meta","extension":"ParaBene","version":"1.0.0","exportedAt":"2026-11-16T09:12:00.000Z","entries":2,"settings":{"aiEnabled":true,"aiProtocol":"basal","aiMode":"both","aiSensitivity":"medium","aiThreshold":0.5,"aiTopics":["accident","violence","death","profanity"],"keywords":["wypadek","..."]}}
-{"type":"hidden","time":"2026-11-16T09:10:41.120Z","url":"https://www.example.pl/","source":"keyword","mode":"both","reason":"wypadek","category":"","fallback":false,"revealed":false,"text":"Wypadek na S6 koło Żukowa..."}
-{"type":"hidden","time":"2026-11-16T09:10:42.305Z","url":"https://www.example.pl/","source":"ai","mode":"both","reason":"","category":"violence","fallback":false,"revealed":true,"text":"...","details":{"score":0.58,"threshold":0.5,"probabilities":{"accident":0.04,"violence":0.51,"death":0.03,"profanity":0,"none":0.42},"model":"basal-2.0-mini-MLX-8bit"}}
+{"type":"meta","extension":"ParaBene","version":"1.0.0","exportedAt":"2026-11-17T20:49:00.000Z","entries":3,"settings":{"aiEnabled":true,"aiProtocol":"builtin","aiModel":"basal-2.0-mini-q5","aiMode":"both","aiSensitivity":"medium","aiThreshold":0.5,"aiTopics":["accident","violence","death","profanity"],"keywords":["wypadek","..."]}}
+{"type":"hidden","count":1,"time":"2026-11-17T20:48:41.120Z","lastTime":"2026-11-17T20:48:41.120Z","url":"https://www.example.pl/","host":"example.pl","source":"keyword","mode":"both","reason":"wypadek","category":"","fallback":false,"revealed":false,"learned":false,"text":"Wypadek na S6 koło Żukowa..."}
+{"type":"hidden","count":2,"time":"2026-11-17T20:48:42.305Z","lastTime":"2026-11-17T20:48:54.600Z","url":"https://www.example.pl/","host":"example.pl","source":"ai","mode":"both","reason":"","category":"violence","fallback":false,"revealed":true,"learned":false,"text":"...","details":{"score":0.76,"threshold":0.5,"probabilities":{"accident":0.04,"violence":0.68,"death":0.03,"profanity":0.01,"none":0.24},"model":"basal-2.0-mini (Q5_K_M)"},"label":"show","labelTime":"2026-11-17T20:49:10.000Z"}
+{"type":"shown","count":1,"time":"2026-11-17T20:48:43.010Z","lastTime":"2026-11-17T20:48:43.010Z","url":"https://www.example.pl/","host":"example.pl","source":"ai","mode":"both","reason":"","category":"","fallback":false,"revealed":false,"learned":false,"text":"Nowa ścieżka rowerowa...","details":{"score":0.05,"threshold":0.5,"probabilities":{"accident":0.02,"violence":0.01,"death":0.01,"profanity":0.01,"none":0.95},"model":"basal-2.0-mini (Q5_K_M)"}}
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `source` | `keyword` — hidden by a phrase from the list; `ai` — hidden by the AI model (the text model, or the image model when `media` is `"image"`). |
-| `mode` | `keywords` (AI off), `both` or `ai` (`aiMode`) at the time of hiding. |
+| `type` | `hidden` or `shown`: the verdict. |
+| `count`, `time`, `lastTime` | How often this text got this verdict, when first and when last. |
+| `label`, `labelTime` | Your correction, when there is one: `show` (should not have been hidden) or `hide` (should have been hidden). |
+| `learned` | `true` when the verdict was "hide" but a learned example let the content through. |
+| `source` | `keyword` — decided by the phrase list; `ai` — decided by the AI model (the text model, or the image model when `media` is `"image"`). |
+| `mode` | `keywords` (AI off), `both` or `ai` (`aiMode`) at the time. |
 | `reason` | The matched phrase (keywords) or the model's own reason (simple protocol). |
 | `category` | Category id, e.g. `profanity` for a profane phrase or the basal topic. |
 | `fallback` | `true` when keywords decided because the AI server was unavailable. |
 | `revealed` | `true` when you clicked **Show anyway** (*Pokaż mimo wszystko*), usually a false positive. |
-| `details` | AI only: the hide `score`, the `threshold`, basal's `probabilities` per topic and the `model` name. |
+| `details` | AI only, for hidden and shown texts: the hide `score`, the `threshold`, basal's `probabilities` per topic and the `model` name. |
 | `media`, `image` | Only for items hidden because of a picture: `"image"` and the picture's address (a `data:` URL is reduced to its type). Such items are recorded once per picture. |
 | `text` | The text that was evaluated (the AI model received at most its first 2,000 characters). |
 
@@ -644,7 +677,7 @@ sites is rejected.
 **Backup** (*Kopia zapasowa*) → **Export settings** (*Eksportuj ustawienia*) saves
 `parabene-settings-YYYYMMDD-HHMM.json` with every setting, including the phrases and excluded
 sites, and the learned examples
-(their texts included, so keep the file private). The log of hidden content and the built-in
+(their texts included, so keep the file private). The log of evaluations and the built-in
 model's file are not part of it.
 
 ```json
@@ -729,7 +762,7 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 - No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face, which starts when you click **Download model** for the [built-in model](#built-in-model-no-server); it carries no page content.
 - Settings are stored only in `chrome.storage.local`. They leave it only as a [backup or list file](#backup-and-keyword-files) you save yourself.
 - Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
-- The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
+- The log of evaluations is off by default. When on, it keeps the text and the address of every evaluated content of the pages you visit (private windows excluded) in the extension's own IndexedDB storage, and leaves the browser only as a file you download yourself. Review it before sharing; **Clear log** on the statistics page deletes it.
 - With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.
 - In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself). With the built-in model it is not sent at all: the model reads it inside the browser.
 

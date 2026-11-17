@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pl" class="i18n-pending">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="statsTitle">ParaBene</title>
+    <link rel="icon" href="../icons/icon48.png" />
+    <link rel="stylesheet" href="stats.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <div class="top__text">
+          <h1 data-i18n="statsTitle"></h1>
+          <p class="lead" data-i18n="statsLead"></p>
+        </div>
+        <div class="top__actions">
+          <label class="toggle">
+            <input type="checkbox" id="log-enabled" />
+            <span data-i18n="logToggleName"></span>
+          </label>
+          <button type="button" class="btn" id="download" data-i18n="logDownload"></button>
+          <button type="button" class="btn btn--quiet" id="clear" data-i18n="logClear"></button>
+        </div>
+      </header>
+      <p class="notice" id="notice" role="status" hidden></p>
+
+      <section class="tiles" id="tiles" aria-live="polite"></section>
+
+      <div class="columns">
+        <section class="card">
+          <h2 data-i18n="statsSourcesTitle"></h2>
+          <div class="scroll">
+            <table class="table" id="sources">
+              <thead>
+                <tr>
+                  <th data-i18n="statsColSource"></th>
+                  <th class="num" data-i18n="statsColEvaluated"></th>
+                  <th class="num" data-i18n="statsColHidden"></th>
+                  <th class="num" data-i18n="statsColShown"></th>
+                  <th class="num" data-i18n="statsColCorrected"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="statsScoresTitle"></h2>
+          <p class="hint" id="scores-hint"></p>
+          <div class="chart" id="scores" role="img"></div>
+          <div class="legend" id="scores-legend" hidden>
+            <span class="legend__item"><i class="swatch swatch--hidden"></i><span data-i18n="statsLegendHidden"></span></span>
+            <span class="legend__item"><i class="swatch swatch--shown"></i><span data-i18n="statsLegendShown"></span></span>
+            <span class="legend__item"><i class="swatch swatch--line"></i><span data-i18n="statsLegendThreshold"></span></span>
+          </div>
+          <details class="data" id="scores-data" hidden>
+            <summary data-i18n="statsScoresTable"></summary>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th data-i18n="statsColRange"></th>
+                  <th class="num" data-i18n="statsColHidden"></th>
+                  <th class="num" data-i18n="statsColShown"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </details>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2 data-i18n="statsSitesTitle"></h2>
+        <div class="scroll">
+          <table class="table" id="sites">
+            <thead>
+              <tr>
+                <th data-i18n="statsColSite"></th>
+                <th class="num" data-i18n="statsColEvaluated"></th>
+                <th class="num" data-i18n="statsColHidden"></th>
+                <th data-i18n="statsColShare"></th>
+                <th class="num" data-i18n="statsColCorrected"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button type="button" class="link" id="sites-all" hidden></button>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="statsEntriesTitle"></h2>
+        <div class="filters">
+          <label class="filter">
+            <span data-i18n="statsFilterVerdict"></span>
+            <select id="filter-verdict">
+              <option value="all" data-i18n="statsAll"></option>
+              <option value="hidden" data-i18n="statsVerdictHidden"></option>
+              <option value="shown" data-i18n="statsVerdictShown"></option>
+            </select>
+          </label>
+          <label class="filter">
+            <span data-i18n="statsColSource"></span>
+            <select id="filter-source">
+              <option value="all" data-i18n="statsAll"></option>
+              <option value="keyword" data-i18n="statsSource_keyword"></option>
+              <option value="aiText" data-i18n="statsSource_aiText"></option>
+              <option value="aiImage" data-i18n="statsSource_aiImage"></option>
+              <option value="fallback" data-i18n="statsSource_fallback"></option>
+            </select>
+          </label>
+          <label class="filter">
+            <span data-i18n="statsColSite"></span>
+            <select id="filter-site"></select>
+          </label>
+          <label class="filter">
+            <span data-i18n="statsFilterLabel"></span>
+            <select id="filter-label">
+              <option value="all" data-i18n="statsAll"></option>
+              <option value="corrected" data-i18n="statsLabelCorrected"></option>
+              <option value="uncorrected" data-i18n="statsLabelUncorrected"></option>
+            </select>
+          </label>
+          <label class="filter filter--wide">
+            <span data-i18n="statsFilterSearch"></span>
+            <input type="search" id="filter-search" data-i18n-placeholder="statsSearchPlaceholder" />
+          </label>
+        </div>
+        <p class="hint" id="found" role="status"></p>
+        <ol class="entries" id="entries"></ol>
+        <div class="pager" id="pager" hidden>
+          <button type="button" class="btn" id="newer" data-i18n="statsNewer"></button>
+          <span id="page-info"></span>
+          <button type="button" class="btn" id="older" data-i18n="statsOlder"></button>
+        </div>
+      </section>
+    </div>
+    <div class="tip" id="tip" hidden></div>
+
+    <script src="../src/config.js"></script>
+    <script src="../src/i18n.js"></script>
+    <script src="../src/store.js"></script>
+    <script type="module" src="stats.js"></script>
+  </body>
+</html>

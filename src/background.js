@@ -8,16 +8,17 @@
  * - optionally judges pictures: fetches them, scales them down and asks the
  *   multimodal basal-serve server (src/config.js, "Optional image evaluation"),
  * - shows the number of hidden elements in the current tab on the icon badge,
- * - keeps the opt-in log of hidden content (chrome.storage.local, exported by the panel),
+ * - passes the verdicts of content scripts to the opt-in log of evaluated content (src/log.js),
  * - keeps the examples learned from revealed content (opt-in, src/learning.js) and confirms
  *   pending ones when their tab leaves the page,
  * - serves translations to content scripts (they cannot read extension files).
  */
-importScripts('config.js', 'i18n.js', 'evaluators.js');
+importScripts('config.js', 'i18n.js', 'evaluators.js', 'store.js', 'log.js');
 
 const Config = self.ParaBeneConfig;
 const I18n = self.ParaBeneI18n;
 const Evaluators = self.ParaBeneEvaluators;
+const Log = self.ParaBeneLog;
 
 /** locale → Promise<messages>; lives as long as the service worker. */
 const messageCache = new Map();
@@ -103,13 +104,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === Config.MSG.LOG_HIDDEN || message.type === Config.MSG.LOG_REVEALED) {
-    queueLog(message.type, message.entry);
+  if (message.type === Config.MSG.LOG_VERDICT || message.type === Config.MSG.LOG_REVEALED) {
+    Log.queue(message.type, message.entry);
     return false;
   }
 
   if (message.type === Config.MSG.LOG_CLEAR) {
-    clearLog().then(() => sendResponse({ ok: true }), (err) => sendResponse({ ok: false, error: describeError(err) }));
+    Log.clear().then(() => sendResponse({ ok: true }), (err) => sendResponse({ ok: false, error: describeError(err) }));
     return true;
   }
 
@@ -801,105 +802,6 @@ function updateBadge(tabId, hidden) {
   const text = count === 0 ? '' : count > 999 ? '999+' : String(count);
   chrome.action.setBadgeText({ tabId, text }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ tabId, color: '#E8833A' }).catch(() => {});
-}
-
-/* ------------------------------------------------------------------ */
-/* Log of hidden content                                               */
-/* ------------------------------------------------------------------ */
-
-const LOG_FLUSH_MS = 1000;
-const logQueue = [];
-let logTimer = 0;
-let logWrite = Promise.resolve();
-
-/** Entries arrive in bursts while a page loads — they are written to storage in batches. */
-function queueLog(type, entry) {
-  if (!entry || typeof entry.text !== 'string') return;
-  if (!entry.text && !(typeof entry.image === 'string' && entry.image)) return;
-  logQueue.push({ type, entry });
-  if (!logTimer) logTimer = setTimeout(flushLog, LOG_FLUSH_MS);
-}
-
-/**
- * The same text hidden for the same reason (e.g. after a page reload) is logged once;
- * a container hidden because of its picture is identified by the picture.
- */
-function logKey(entry) {
-  if (!entry.image) return `${entry.source}\n${entry.text}`;
-  // A data: picture is logged as its type only (logImageUrl), so the text tells such pictures apart.
-  return entry.image.startsWith('data:') ? `image\n${entry.image}\n${entry.text}` : `image\n${entry.image}`;
-}
-
-/** Picture address for the log: a data: URL is replaced by its type (it can be megabytes long). */
-function logImageUrl(value) {
-  const url = String(value || '');
-  if (url.startsWith('data:')) return url.split(/[;,]/)[0].slice(0, 100);
-  return url.slice(0, 1000);
-}
-
-function flushLog() {
-  logTimer = 0;
-  const batch = logQueue.splice(0);
-  logWrite = logWrite
-    .then(async () => {
-      const { logEnabled } = await Config.load();
-      if (!logEnabled) return;
-      const stored = await chrome.storage.local.get(Config.LOG_STORAGE_KEY);
-      const entries = Array.isArray(stored[Config.LOG_STORAGE_KEY]) ? stored[Config.LOG_STORAGE_KEY] : [];
-      const index = new Map(entries.map((entry) => [logKey(entry), entry]));
-      let changed = false;
-      for (const { type, entry } of batch) {
-        const clean = sanitizeLogEntry(entry);
-        const existing = index.get(logKey(clean));
-        if (type === Config.MSG.LOG_REVEALED) {
-          if (existing && !existing.revealed) {
-            existing.revealed = true;
-            changed = true;
-          }
-        } else if (!existing) {
-          entries.push(clean);
-          index.set(logKey(clean), clean);
-          changed = true;
-        }
-      }
-      if (!changed) return;
-      await chrome.storage.local.set({ [Config.LOG_STORAGE_KEY]: entries.slice(-Config.LOG_MAX_ENTRIES) });
-    })
-    .catch((err) => console.warn('[ParaBene] Failed to write the log:', err));
-}
-
-/**
- * "Clear log" from the panel. It runs in the same queue as the writes, so a write that has
- * already read the old entries cannot put them back; entries not yet written are dropped too.
- */
-function clearLog() {
-  clearTimeout(logTimer);
-  logTimer = 0;
-  logQueue.length = 0;
-  const cleared = logWrite.then(() => chrome.storage.local.remove(Config.LOG_STORAGE_KEY));
-  logWrite = cleared.catch((err) => console.warn('[ParaBene] Failed to clear the log:', err));
-  return cleared;
-}
-
-/** Keeps only the known fields, with sane types and lengths. */
-function sanitizeLogEntry(raw) {
-  const entry = {
-    time: typeof raw.time === 'string' ? raw.time : new Date().toISOString(),
-    url: String(raw.url || '').slice(0, 500),
-    source: raw.source === 'ai' ? 'ai' : 'keyword',
-    mode: ['keywords', 'both', 'ai'].includes(raw.mode) ? raw.mode : 'keywords',
-    reason: String(raw.reason || '').slice(0, 200),
-    category: typeof raw.category === 'string' ? raw.category.slice(0, 40) : '',
-    fallback: raw.fallback === true,
-    revealed: false,
-    text: String(raw.text).slice(0, Config.LOG_MAX_TEXT),
-  };
-  if (raw.image) {
-    entry.media = 'image';
-    entry.image = logImageUrl(raw.image);
-  }
-  if (raw.details && typeof raw.details === 'object') entry.details = raw.details;
-  return entry;
 }
 
 /* ------------------------------------------------------------------ */

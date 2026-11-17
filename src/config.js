@@ -252,7 +252,7 @@
     STATS: 'parabene:stats',
     GET_STATS: 'parabene:getStats',
     GET_MESSAGES: 'parabene:getMessages',
-    LOG_HIDDEN: 'parabene:logHidden',
+    LOG_VERDICT: 'parabene:logVerdict',
     LOG_REVEALED: 'parabene:logRevealed',
     LOG_CLEAR: 'parabene:logClear',
     LEARN_PENDING: 'parabene:learnPending',
@@ -273,13 +273,16 @@
   });
 
   /**
-   * Log of hidden content (opt-in, `logEnabled`): kept by the service worker in
-   * chrome.storage.local under LOG_STORAGE_KEY, never sent anywhere; the panel
-   * exports it as a .jsonl file for later analysis. Only the newest LOG_MAX_ENTRIES
-   * are kept, each text capped at LOG_MAX_TEXT characters.
+   * Log of evaluated content (opt-in, `logEnabled`): every judged text, hidden or shown, kept by
+   * the service worker in IndexedDB (src/store.js), never sent anywhere; the statistics page
+   * (STATS_PAGE) shows it and lets the user correct verdicts, the panel exports it as a .jsonl
+   * file. Only the newest LOG_MAX_ENTRIES are kept (corrected ones stay), each text capped at
+   * LOG_MAX_TEXT characters. LOG_STORAGE_KEY is where versions up to 1.0 kept the log of hidden
+   * content in chrome.storage.local: it is moved into the database once.
    */
   const LOG_STORAGE_KEY = 'hideLog';
-  const LOG_MAX_ENTRIES = 1000;
+  const LOG_MAX_ENTRIES = 10000;
+  const STATS_PAGE = 'stats/stats.html';
   const LOG_MAX_TEXT = 2000;
 
   const AI_TIMEOUT_MS = 4000;
@@ -614,6 +617,7 @@
     MSG,
     LOG_STORAGE_KEY,
     LOG_MAX_ENTRIES,
+    STATS_PAGE,
     LOG_MAX_TEXT,
     AI_TIMEOUT_MS,
     AI_MAX_CHARS,

@@ -5,6 +5,7 @@
   const Config = globalThis.ParaBeneConfig;
   const I18n = globalThis.ParaBeneI18n;
   const Backup = globalThis.ParaBeneBackup;
+  const LogCard = globalThis.ParaBeneLogCard;
   const profanity = new Set(Config.PROFANITY.map(Config.normalizeKeyword));
 
   const els = {
@@ -73,10 +74,6 @@
     learnList: document.getElementById('learn-list'),
     learnClear: document.getElementById('learn-clear'),
     logEnabled: document.getElementById('log-enabled'),
-    logCount: document.getElementById('log-count'),
-    logStatus: document.getElementById('log-status'),
-    logDownload: document.getElementById('log-download'),
-    logClear: document.getElementById('log-clear'),
     backupCard: document.getElementById('backup-card'),
     settingsExport: document.getElementById('settings-export'),
     settingsImport: document.getElementById('settings-import'),
@@ -105,10 +102,8 @@
   const feedbackTimers = new Map();
   let recentlyAdded = new Set();
   let stats = null;
-  let logEntries = [];
-  let clearArmedTimer = 0;
-  let logError = '';
-  let logErrorTimer = 0;
+  /** The card of the log of evaluated content (popup/log-card.js). */
+  let logCard = null;
   let learnedEntries = [];
   let pendingCount = 0;
   let learnClearArmedTimer = 0;
@@ -226,7 +221,7 @@
     renderSites();
     renderStatHint();
     renderStats();
-    renderLog();
+    if (logCard) logCard.render(settings);
     renderLearned();
     renderListImport();
     renderSettingsImport();
@@ -637,82 +632,7 @@
     }
   }
 
-  /* ---------------- Log of hidden content ---------------- */
-
-  async function loadLog() {
-    const stored = await chrome.storage.local.get(Config.LOG_STORAGE_KEY);
-    setLogEntries(stored[Config.LOG_STORAGE_KEY]);
-  }
-
-  function setLogEntries(value) {
-    logEntries = Array.isArray(value) ? value : [];
-    renderLog();
-  }
-
-  function renderLog() {
-    const total = logEntries.length;
-    els.logCount.textContent = i18n.formatNumber(total);
-    els.logDownload.disabled = total === 0;
-    els.logClear.disabled = total === 0;
-    if (!clearArmedTimer) els.logClear.textContent = t('logClear');
-    if (logError) {
-      showFeedback(els.logStatus, logError, 'error');
-      return;
-    }
-    if (total === 0) {
-      showFeedback(els.logStatus, t(settings.logEnabled ? 'logEmpty' : 'logOff'), null);
-      return;
-    }
-    const ai = logEntries.filter((entry) => entry.source === 'ai');
-    const aiImage = ai.filter((entry) => entry.media === 'image').length;
-    const revealed = logEntries.filter((entry) => entry.revealed).length;
-    const summary = t('logSummary', [
-      i18n.formatNumber(total - ai.length),
-      i18n.formatNumber(ai.length - aiImage),
-      i18n.formatNumber(aiImage),
-      i18n.formatNumber(revealed),
-    ]);
-    showFeedback(els.logStatus, summary, null);
-  }
-
-  /** A failed "Clear log" replaces the summary for a few seconds ('' brings the summary back). */
-  function showLogError(text) {
-    clearTimeout(logErrorTimer);
-    logError = text;
-    logErrorTimer = text ? setTimeout(() => showLogError(''), 6000) : 0;
-    renderLog();
-  }
-
-  /** JSON Lines: a header with the extension version and the settings, then one hidden item per line. */
-  function buildLogFile() {
-    const manifest = chrome.runtime.getManifest();
-    const meta = {
-      type: 'meta',
-      extension: 'ParaBene',
-      version: manifest.version,
-      exportedAt: new Date().toISOString(),
-      entries: logEntries.length,
-      settings: {
-        aiEnabled: settings.aiEnabled,
-        aiProtocol: settings.aiProtocol,
-        aiModel: settings.aiProtocol === 'builtin' ? settings.aiModel : undefined,
-        aiMode: settings.aiMode,
-        aiSensitivity: settings.aiSensitivity,
-        aiThreshold: Config.AI_SENSITIVITIES[settings.aiSensitivity],
-        aiTopics: settings.aiTopics,
-        aiImagesEnabled: settings.aiImagesEnabled,
-        keywords: settings.keywords,
-      },
-    };
-    const lines = [meta, ...logEntries.map((entry) => Object.assign({ type: 'hidden' }, entry))];
-    return lines.map((line) => JSON.stringify(line)).join('\n') + '\n';
-  }
-
-  function downloadLog() {
-    if (logEntries.length === 0) return;
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
-    saveFile(`parabene-log-${stamp}.jsonl`, buildLogFile(), 'application/x-ndjson');
-  }
+  /* ---------------- Files ---------------- */
 
   /** Hands a generated file to the browser's downloads. */
   function saveFile(name, text, type) {
@@ -725,30 +645,6 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-  }
-
-  /** The first click arms the button, a second one within a few seconds clears the log. */
-  async function clearLog() {
-    if (!clearArmedTimer) {
-      els.logClear.textContent = t('logClearConfirm');
-      clearArmedTimer = setTimeout(() => {
-        clearArmedTimer = 0;
-        renderLog();
-      }, 4000);
-      return;
-    }
-    clearTimeout(clearArmedTimer);
-    clearArmedTimer = 0;
-    let failure = '';
-    try {
-      // Through the service worker, which queues it after any log write in progress.
-      const response = await chrome.runtime.sendMessage({ type: Config.MSG.LOG_CLEAR });
-      if (!(response && response.ok)) failure = describeAiError(response && response.error);
-    } catch (err) {
-      failure = t('aiError_unknown', err.message);
-    }
-    // Also puts the button's label back; a cleared log is rendered by the storage change.
-    showLogError(failure ? t('logClearFailed', failure) : '');
   }
 
   /* ---------------- Learning from revealed content ---------------- */
@@ -1280,8 +1176,6 @@
       }
     });
     els.learnClear.addEventListener('click', clearLearned);
-    els.logDownload.addEventListener('click', downloadLog);
-    els.logClear.addEventListener('click', clearLog);
     els.language.addEventListener('change', () => {
       if (Config.isSupportedLanguage(els.language.value)) {
         chrome.storage.local.set({ language: els.language.value });
@@ -1290,7 +1184,6 @@
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
-      if (Config.LOG_STORAGE_KEY in changes) setLogEntries(changes[Config.LOG_STORAGE_KEY].newValue);
       if (Config.BUILTIN_STORAGE_KEY in changes) refreshModel();
       if (Config.LEARN_STORAGE_KEY in changes || Config.LEARN_PENDING_KEY in changes) {
         if (Config.LEARN_STORAGE_KEY in changes) {
@@ -1340,7 +1233,8 @@
     els.version.textContent = `v${chrome.runtime.getManifest().version}`;
     bind();
     settings = await Config.load();
-    await loadLog();
+    logCard = LogCard.create({ t, formatNumber: (value) => i18n.formatNumber(value), showFeedback });
+    await logCard.refresh();
     await loadLearned();
     await applyLanguage(settings.language);
     document.documentElement.classList.remove('i18n-pending');

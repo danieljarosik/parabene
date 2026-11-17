@@ -1,0 +1,87 @@
+/*
+ * ParaBene – the service worker's side of the log of evaluated content (opt-in, `logEnabled`).
+ *
+ * Content scripts send every verdict (LOG_VERDICT) and every "Show anyway" (LOG_REVEALED); this
+ * file writes them into the database (src/store.js) in batches, moves the log of versions up to
+ * 1.0 into it once, and clears the log on request. Loaded by src/background.js, which only routes
+ * the messages here.
+ */
+(function (root) {
+  'use strict';
+
+  const Config = root.ParaBeneConfig;
+  const Store = root.ParaBeneStore;
+
+  const FLUSH_MS = 1000;
+  const queue = [];
+  let timer = 0;
+  /** Writes and clears run one after another. */
+  let writing = Promise.resolve();
+
+  /** Entries arrive in bursts while a page loads — they are written to the database in batches. */
+  function add(type, entry) {
+    if (!entry || typeof entry.text !== 'string') return;
+    if (!entry.text && !(typeof entry.image === 'string' && entry.image)) return;
+    queue.push({ type, entry });
+    if (!timer) timer = setTimeout(flush, FLUSH_MS);
+  }
+
+  function flush() {
+    timer = 0;
+    const batch = queue.splice(0);
+    writing = writing
+      .then(async () => {
+        const { logEnabled } = await Config.load();
+        if (!logEnabled) return;
+        await moveOldLog();
+        // In the order they happened: a "Show anyway" may follow its own verdict in one batch.
+        const verdicts = [];
+        for (const { type, entry } of batch) {
+          const clean = Store.sanitize(entry);
+          if (type === Config.MSG.LOG_REVEALED) {
+            if (verdicts.length) await Store.add(verdicts.splice(0));
+            await Store.markRevealed(clean);
+          } else {
+            verdicts.push(clean);
+          }
+        }
+        if (verdicts.length) await Store.add(verdicts);
+      })
+      .catch((err) => console.warn('[ParaBene] Failed to write the log:', err));
+  }
+
+  /**
+   * Versions up to 1.0 kept the log of hidden content in chrome.storage.local: its entries are
+   * moved into the database once and the old key is removed.
+   */
+  async function moveOldLog() {
+    const key = Config.LOG_STORAGE_KEY;
+    const old = (await chrome.storage.local.get(key))[key];
+    if (old === undefined) return;
+    if (Array.isArray(old) && old.length) {
+      const entries = old
+        .filter((entry) => entry && typeof entry.text === 'string')
+        .map((entry) => Store.sanitize(Object.assign({}, entry, { hidden: true })));
+      await Store.add(entries);
+    }
+    await chrome.storage.local.remove(key);
+  }
+
+  /**
+   * "Clear log" from the statistics page. It runs in the same queue as the writes, so entries not
+   * yet written are dropped too and a write in progress cannot follow the clearing.
+   */
+  function clear() {
+    clearTimeout(timer);
+    timer = 0;
+    queue.length = 0;
+    const cleared = writing.then(async () => {
+      await chrome.storage.local.remove(Config.LOG_STORAGE_KEY);
+      await Store.clear();
+    });
+    writing = cleared.catch((err) => console.warn('[ParaBene] Failed to clear the log:', err));
+    return cleared;
+  }
+
+  root.ParaBeneLog = Object.freeze({ queue: add, clear });
+})(globalThis);
