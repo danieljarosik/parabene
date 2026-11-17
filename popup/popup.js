@@ -29,6 +29,8 @@
     aiSettings: document.getElementById('ai-settings'),
     aiProtocol: document.getElementById('ai-protocol'),
     aiEndpoint: document.getElementById('ai-endpoint'),
+    aiEndpointLabel: document.getElementById('ai-endpoint-label'),
+    aiBuiltinHint: document.getElementById('ai-builtin-hint'),
     aiTest: document.getElementById('ai-test'),
     aiStatus: document.getElementById('ai-status'),
     aiMode: document.getElementById('ai-mode'),
@@ -130,14 +132,19 @@
     els.aiEnabled.checked = settings.aiEnabled;
     els.aiSettings.classList.toggle('ai--inactive', !settings.aiEnabled);
     els.aiProtocol.value = settings.aiProtocol;
-    els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol];
+    // The built-in model has no server: no address to enter, a note about the download instead.
+    const builtin = settings.aiProtocol === 'builtin';
+    els.aiEndpoint.hidden = builtin;
+    els.aiEndpointLabel.hidden = builtin;
+    els.aiBuiltinHint.hidden = !builtin;
+    els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol] || '';
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
     els.aiMode.value = settings.aiMode;
     els.aiImagesEnabled.checked = settings.aiImagesEnabled;
     els.aiImagesSettings.classList.toggle('ai--inactive', !settings.aiImagesEnabled);
     if (document.activeElement !== els.aiImagesEndpoint) els.aiImagesEndpoint.value = settings.aiImagesEndpoint;
-    // Sensitivity and topics apply to basal-serve text evaluation and to image evaluation.
-    const basalText = settings.aiProtocol === 'basal';
+    // Sensitivity and topics apply to basal text evaluation (a server or the built-in model) and to image evaluation.
+    const basalText = Config.usesBasalQuestion(settings.aiProtocol);
     els.basalSettings.hidden = !basalText && !settings.aiImagesEnabled;
     els.basalSettings.classList.toggle(
       'ai--inactive',
@@ -300,6 +307,7 @@
   /* ---------------- Local AI model ---------------- */
 
   async function saveEndpoint() {
+    if (settings.aiProtocol === 'builtin') return true; // no endpoint to save
     const value = els.aiEndpoint.value.trim();
     if (!Config.isValidEndpoint(value)) {
       els.aiEndpoint.classList.add('input--invalid');
@@ -322,8 +330,9 @@
     const protocol = els.aiProtocol.value;
     if (!Config.isSupportedProtocol(protocol) || protocol === settings.aiProtocol) return;
     const update = { aiProtocol: protocol };
-    if (Object.values(Config.DEFAULT_ENDPOINTS).includes(settings.aiEndpoint)) {
-      update.aiEndpoint = Config.DEFAULT_ENDPOINTS[protocol];
+    const fallback = Config.DEFAULT_ENDPOINTS[protocol]; // none for the built-in model
+    if (fallback && Object.values(Config.DEFAULT_ENDPOINTS).includes(settings.aiEndpoint)) {
+      update.aiEndpoint = fallback;
     }
     els.aiEndpoint.classList.remove('input--invalid');
     await chrome.storage.local.set(update);

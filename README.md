@@ -9,8 +9,8 @@ Hidden content does not disappear from the page: it collapses into an unobtrusiv
 
 so it can be revealed with a single click in case of a false positive. With the optional [learning](#learning-from-revealed-content) on, ParaBene remembers what you revealed and lets similar content through.
 
-- Plain JavaScript, HTML and CSS — **no `npm install`, no bundler, no external dependencies**.
-- Everything runs locally. Page text never leaves your machine or home network (the optional AI model runs on `localhost` or on a server you choose in your LAN); the same goes for pictures with the optional image evaluation.
+- Plain JavaScript, HTML and CSS — **no `npm install`, no bundler, no build step**. The only third-party code is [wllama](https://github.com/ngxson/wllama) (llama.cpp in WebAssembly, MIT), kept in `vendor/wllama/` for the optional [built-in model](#built-in-model-no-server).
+- Everything runs locally. Page text never leaves your machine or home network (the optional AI model runs in the browser itself, on `localhost` or on a server you choose in your LAN); the same goes for pictures with the optional image evaluation.
 - Modular decision engine, ready for plugging in a local AI model (Stage 2).
 
 > The user interface is available in **Polish (default) and English** — switch it with the language picker in the panel's footer. The default keyword list is Polish, as ParaBene targets Polish-language websites.
@@ -48,7 +48,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI server is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. With learning on, **Let through (learned)** (*Przepuszczone (nauka)*) counts content let through by learned examples. |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
-| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract or [basal-serve](#basal-serve-v1basal); the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
+| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract, [basal-serve](#basal-serve-v1basal) or the [built-in model](#built-in-model-no-server) (*Wbudowany model*), which needs no server; the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
@@ -99,15 +99,21 @@ parabene/
 │   ├── learning.js        similarity of texts for learning from revealed content
 │   ├── content.js         MutationObserver, container heuristics, hiding/restoring, "Hide" bars
 │   ├── content.css        styles for hidden blocks and the placeholder bar
-│   └── background.js      service worker: default settings, local AI proxy (text and pictures), icon badge counter, log, learned examples, translations for content scripts
+│   └── background.js      service worker: default settings, local AI proxy (text and pictures), the built-in model's offscreen document, icon badge counter, log, learned examples, translations for content scripts
+├── offscreen/
+│   ├── offscreen.html     background page of the built-in model (never shown)
+│   └── offscreen.js       loads the model with wllama and answers the service worker
 ├── popup/
 │   ├── popup.html
 │   ├── popup.css
 │   └── popup.js
+├── vendor/
+│   └── wllama/            wllama 3.13.0 (MIT), written by tools/vendor_wllama.py
 └── tools/
     ├── generate_icons.py  icon generator (plain Python, no libraries)
     ├── check_locales.py   translation consistency check (plain Python, no libraries)
-    └── basal_check.py     basal-serve check and reference client (plain Python, no libraries)
+    ├── basal_check.py     basal-serve check and reference client (plain Python, no libraries)
+    └── vendor_wllama.py   downloads wllama and writes vendor/wllama/ (plain Python, no libraries)
 ```
 
 `content.js` deals with the DOM only. Whether to hide a piece of text is decided by an evaluator from `evaluators.js` through a shared contract:
@@ -172,7 +178,7 @@ PARABENE_AI_IMAGES_ENABLED=true
 PARABENE_AI_IMAGES_ENDPOINT=http://192.168.1.170:8011
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`/`builtin`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -339,6 +345,137 @@ Warm requests take ~150–300 ms. Check a server and see the raw contract with t
 python3 tools/basal_check.py --url http://192.168.1.170:8010
 ```
 
+### Built-in model (no server)
+
+Pick **Built-in model (in the browser, WebGPU)** (*Wbudowany model (w przeglądarce, WebGPU)*) under **Request format** (*Format zapytań*), or set `PARABENE_AI_PROTOCOL=builtin` in `.env`, to run the basal model inside the browser. Nothing has to be installed or started, and page text does not leave the browser. Pages are judged as with a server; only the place where the model computes changes.
+
+#### What changes
+
+With a server (request formats `simple` and `basal`) the text leaves the browser for a process you install and start yourself:
+
+```mermaid
+flowchart LR
+    subgraph browser["Browser"]
+        P["Page<br/>content.js"] -- sendMessage --> S["Service worker<br/>background.js"]
+    end
+    S -- "HTTP POST" --> B["basal-serve<br/>separate process, port 8000"]
+```
+
+With the built-in model (`builtin`) the last hop stays inside the browser. It goes to a hidden page of the extension that holds the model:
+
+```mermaid
+flowchart LR
+    subgraph browser["Browser"]
+        P["Page<br/>content.js"] -- sendMessage --> S["Service worker<br/>background.js"]
+        S -- sendMessage --> O["Offscreen document<br/>wllama + model on WebGPU"]
+    end
+```
+
+- **What runs.** [basal-2.0-mini](https://huggingface.co/Remek/basal-2.0-mini-GGUF) as a GGUF file (`Q5_K_M`, 1.17 GB), by llama.cpp compiled to WebAssembly ([wllama](https://github.com/ngxson/wllama)), on the graphics card through WebGPU. It answers the same question as [basal-serve](#basal-serve-v1basal), so **Sensitivity** and **Hidden topics** apply. The prompt and the calibration are not rewritten in JavaScript: wllama has a decision API (`createSystemOne`), and the `-decision.gguf` variant of the model file carries the metadata it needs.
+- **Requirements.** A browser with WebGPU. Tested on Apple Silicon only (M4 Pro; the extension in Brave 156, the model on a plain page also in Chrome 157). There is no CPU fallback (see [Speed](#speed)). Without WebGPU, **Test** (*Testuj*) says so and keywords are used.
+- **Pictures** are not judged by the built-in model; [image evaluation](#image-evaluation-basal-omni) still needs its own server.
+
+#### How a decision travels
+
+The content script finds an article or a post and asks for a verdict on its text, as it does for a server. Three messages go one way and three answers come back:
+
+```mermaid
+sequenceDiagram
+    participant P as Page (content.js)
+    participant S as Service worker (background.js)
+    participant O as Offscreen document (offscreen.js)
+    participant W as wllama worker (WebAssembly + WebGPU)
+    P->>S: parabene:classify {text}
+    S->>O: parabene:builtin:evaluate {body}
+    O->>W: createSystemOne(body)
+    Note over W: 0.3–1.2 s on the GPU
+    W-->>O: probabilities per topic
+    O-->>S: {ok, data}
+    S-->>P: {hide, category, score}
+```
+
+`body` is the request basal-serve gets: the text and the list of topics. The service worker sums the probabilities of the selected topics and compares the sum with the threshold of the chosen **Sensitivity**.
+
+- **One decision at a time.** The model computes them one after another, so the service worker waits up to 30 s for an answer (`BUILTIN_TIMEOUT_MS`; a server gets 4 s).
+- **When the model does not answer** (it is still downloading, there is no WebGPU, it failed), the request fails with `modelLoading`, `noWebGPU` or `modelFailed` and the page uses keywords for 30 s, as with a server that is down.
+- **Keywords still work.** In the *Keywords + AI* mode a keyword match hides the content at once, without asking the model.
+
+#### Life of the offscreen document
+
+Chrome stops a service worker after 30 s without events, so it cannot hold the model. An [offscreen document](https://developer.chrome.com/docs/extensions/reference/api/offscreen), a hidden page of the extension, holds it instead; the service worker opens and closes that page as the settings say.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Loading: filter, AI model and builtin format on
+    Loading --> Ready: model loaded
+    Loading --> Error: no WebGPU or download failed
+    Error --> Loading: next request
+    Ready --> Closed: filter, AI model or builtin format off
+    Loading --> Closed: switched off
+    Error --> Closed: switched off
+```
+
+- **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings change.
+- **First use.** *Loading* is then a download of 1.17 GB from Hugging Face (a pinned revision) into the extension's own storage; it took 76–83 s. Meanwhile **Test** (*Testuj*) shows the progress and pages are filtered by keywords.
+- **Later starts** read the file from that storage, without a request to the server. The document opens 0.5 s after the browser starts and the model is ready after 1.0–2.3 s; the first decision or two take 1.4–1.6 s while the weights are read.
+- **No time limit.** The document stays open as long as the settings ask for it. In a test the service worker was stopped after 34 s without events, and the same document, with the model in memory, was still open when the test ended after 150 s.
+- **Closing frees the memory** (see [Memory](#memory)).
+
+#### Speed
+
+Median time of one decision on an Apple M4 Pro (24 GB):
+
+| Text | Built-in model (WebGPU) | basal-serve (MLX) | Built-in model on the CPU alone |
+| --- | ---: | ---: | ---: |
+| short, ~100 characters | 0.33 s | 0.08 s | 5.8 s |
+| medium, 500 characters | 0.53 s | 0.14 s | 6.5 s |
+| long, 2,000 characters (ParaBene's cap) | 1.19 s | 0.27 s | 20 s |
+
+The CPU is not used: it is slower than any wait a page can afford. One thread of WebAssembly is enough next to the GPU (seven threads gave the same times). Twenty medium texts sent at once took 10.5 s, so a page with many tiles is cleared within several seconds.
+
+#### Memory
+
+Physical memory of all the browser's processes, measured once with macOS `footprint` (which counts memory on the graphics card), 315 decisions:
+
+| Stage | Total | GPU process | Above the start |
+| --- | ---: | ---: | ---: |
+| AI model off | 555 MB | 73 MB | 0 |
+| Model loaded, before any decision | 2,206 MB | 1,406 MB | +1,651 MB |
+| After 15 decisions (4 of them long) | 2,238 MB | 1,413 MB | +1,683 MB |
+| After 115 decisions | 2,257 MB | 1,415 MB | +1,702 MB |
+| After 215 decisions | 2,362 MB | 1,497 MB | +1,807 MB |
+| After 315 decisions | 2,281 MB | 1,413 MB | +1,726 MB |
+| After 30 s without requests | 2,281 MB | 1,413 MB | +1,726 MB |
+| AI model off again | 625 MB | 65 MB | +70 MB |
+
+- **The model costs about 1.65 GB**: 1.27 GB of weights on the graphics card and about 0.3 GB in the extension's page. While loading, the GPU process reached 1,621 MB and the extension's page 529 MB.
+- **Decisions add little.** 315 of them added 75 MB, less with every hundred (47, 23 and 2 MB in the extension's page). The rise of the GPU process at 215 decisions did not last.
+- **Not measured:** thousands of decisions. 315 are too few to rule out a slow leak.
+
+#### What was checked
+
+In Brave 156 without a window, driven over the DevTools protocol, with the extension loaded from its directory:
+
+| Check | Result |
+| --- | --- |
+| Browser start, nothing else done | document open after 0.5 s, model ready after 1.0–2.3 s |
+| First download of the model | 76–83 s, then no further request |
+| Service worker stopped | the model is not loaded again; the next decision took 0.35–0.75 s |
+| AI model switched off | document closed |
+| A page with 6 articles that match no keyword | 3 hidden with *(powód: …, AI – tekst)*, 3 neutral ones shown |
+| **Test** (*Testuj*) in the panel | *Połączono ✓ … Wynik: 0,1 (próg 0,5)* |
+
+#### Limits
+
+- **Chrome with the extension was not tested by a script**: Chrome 157 does not load an extension from the command line. The model on a plain page ran in it as in Brave.
+- **Other graphics cards** than Apple's were not tested.
+- **Scores differ from basal-serve's.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
+- **Diluted texts.** A sentence about an accident followed by a long neutral text is judged neutral. basal-serve does the same.
+- **Download progress** is shown only after a click on **Test** (*Testuj*).
+
+`vendor/wllama/` is written by `python3 tools/vendor_wllama.py`, which downloads the pinned npm package, checks its SHA-512 and copies the library, its WebAssembly binary and its licence unchanged.
+
 ### Image evaluation (basal-omni)
 
 Turn on **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) to judge pictures as well. It needs a second basal-serve server with a multimodal model and media enabled; the text model keeps its own, much faster server:
@@ -457,12 +594,12 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 
 ## Privacy
 
-- No telemetry, analytics or external servers.
+- No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face when you choose the [built-in model](#built-in-model-no-server); it carries no page content.
 - Settings are stored only in `chrome.storage.local`.
 - Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
 - The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
 - With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.
-- In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself).
+- In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself). With the built-in model it is not sent at all: the model reads it inside the browser.
 
 ## Permissions
 
@@ -470,8 +607,11 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 | --- | --- |
 | `storage` | saving settings, the phrase list, the log and learned examples |
 | `activeTab` | reading the hidden-elements counter from the current tab |
+| `offscreen` | the hidden page that keeps the built-in model loaded |
 | `host_permissions: <all_urls>` | running the filter on news portals and social media; fetching pictures for the optional image evaluation |
 | `http://localhost/*`, `http://127.0.0.1/*` | connecting to the local AI model |
+
+The extension pages' Content Security Policy adds `'wasm-unsafe-eval'`, which lets the built-in model's WebAssembly run; scripts still come from the extension's own files only.
 
 ## Development
 

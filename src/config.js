@@ -10,9 +10,10 @@
   /**
    * Request formats the AI evaluator can speak:
    * - simple: POST {"text"} → {"hide", "reason"} (README, "Local AI endpoint contract"),
-   * - basal:  basal-serve's typed-decision API (POST /v1/basal, see src/evaluators.js).
+   * - basal:  basal-serve's typed-decision API (POST /v1/basal, see src/evaluators.js),
+   * - builtin: no server; the model runs in the browser (see "Built-in model" below).
    */
-  const AI_PROTOCOLS = Object.freeze(['simple', 'basal']);
+  const AI_PROTOCOLS = Object.freeze(['simple', 'basal', 'builtin']);
   const DEFAULT_PROTOCOL = 'simple';
   const DEFAULT_ENDPOINTS = Object.freeze({
     simple: DEFAULT_ENDPOINT,
@@ -21,6 +22,31 @@
 
   /** basal-serve's decision route, appended when the endpoint is a bare server address. */
   const BASAL_PATH = '/v1/basal';
+
+  /**
+   * Built-in model (`aiProtocol: "builtin"`): the basal decision model runs inside the browser, in
+   * an offscreen document the service worker opens once and keeps in the background
+   * (offscreen/offscreen.js). llama.cpp compiled to WebAssembly (vendor/wllama) runs the GGUF file
+   * on the GPU through WebGPU; there is no CPU fallback (a decision takes 4–20 s on the CPU).
+   * The model file is downloaded once from Hugging Face (a pinned revision) into the extension's
+   * own storage; page text never leaves the browser. It asks the same question as the basal
+   * protocol, so sensitivity and topics apply.
+   * Measured on an Apple M4 Pro: 0.33 s for a short text, 0.53 s for 500 characters, 1.2 s for
+   * 2,000; decisions are made one at a time, hence the generous timeout.
+   */
+  const BUILTIN_MODEL_NAME = 'basal-2.0-mini-Q5_K_M';
+  const BUILTIN_MODEL_URL =
+    'https://huggingface.co/Remek/basal-2.0-mini-GGUF/resolve/b6b79ac00da308d93b39c6ca500792ce2ee83a6f/' +
+    'basal-2.0-mini-Q5_K_M-decision.gguf';
+  const BUILTIN_PAGE = 'offscreen/offscreen.html';
+  const BUILTIN_TIMEOUT_MS = 30000;
+  /** Tokens of context: 2,000 characters of Polish text are ~500 tokens with the question. */
+  const BUILTIN_CONTEXT = 4096;
+
+  /** Protocols that ask the basal question (sensitivity and topics apply to them). */
+  function usesBasalQuestion(protocol) {
+    return protocol === 'basal' || protocol === 'builtin';
+  }
 
   /**
    * How keywords and the AI model work together:
@@ -177,6 +203,9 @@
     LEARN_COMMIT: 'parabene:learnCommit',
     LEARN_CANCEL: 'parabene:learnCancel',
     LEARN_FORGET: 'parabene:learnForget',
+    // service worker → offscreen document (the built-in model)
+    BUILTIN_LOAD: 'parabene:builtin:load',
+    BUILTIN_EVALUATE: 'parabene:builtin:evaluate',
   });
 
   /**
@@ -394,6 +423,12 @@
     DEFAULT_PROTOCOL,
     DEFAULT_ENDPOINTS,
     BASAL_PATH,
+    BUILTIN_MODEL_NAME,
+    BUILTIN_MODEL_URL,
+    BUILTIN_PAGE,
+    BUILTIN_TIMEOUT_MS,
+    BUILTIN_CONTEXT,
+    usesBasalQuestion,
     AI_MODES,
     DEFAULT_AI_MODE,
     AI_SENSITIVITIES,
