@@ -1183,9 +1183,49 @@
       }
     }
   },
-  "importInTab": {
-    "message": "Okienko rozszerzenia zamyka się przy wyborze pliku, dlatego panel otwarto w karcie. Kliknij przycisk importu jeszcze raz.",
-    "description": "Shown when the panel was opened in a tab to import a file."
+  "importWindowTitle": {
+    "message": "$title$ – ParaBene",
+    "description": "Title of the import window (its title bar).",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Import słów kluczowych"
+      }
+    }
+  },
+  "importTitle_keywords": {
+    "message": "Import słów kluczowych",
+    "description": "Heading of the import window for a keywords file."
+  },
+  "importTitle_settings": {
+    "message": "Import ustawień",
+    "description": "Heading of the import window for a settings backup."
+  },
+  "importDesc_keywords": {
+    "message": "Wybierz plik z frazami (.txt), np. zapisany przyciskiem „Eksportuj do pliku”. Z kopii ustawień (.json) zostaną wzięte tylko frazy.",
+    "description": "Description in the import window for a keywords file."
+  },
+  "importDesc_settings": {
+    "message": "Wybierz plik kopii zapasowej (.json) zapisany przyciskiem „Eksportuj ustawienia”. Zanim cokolwiek zostanie zmienione, zobaczysz podsumowanie.",
+    "description": "Description in the import window for a settings backup."
+  },
+  "importChoose": {
+    "message": "Wybierz plik…",
+    "description": "Button in the import window that opens the file picker."
+  },
+  "importDropHint": {
+    "message": "albo upuść plik w tym oknie",
+    "description": "Below the file picker button: a file can also be dragged onto the window."
+  },
+  "importWindowFailed": {
+    "message": "Nie udało się otworzyć okna importu: $detail$",
+    "description": "Error when the import window could not be opened.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "No window with id: 12."
+      }
+    }
   },
   "importError_invalidJson": {
     "message": "Nie można odczytać pliku: to nie jest poprawny JSON.",

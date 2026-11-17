@@ -665,8 +665,12 @@ that makes older files wrong — a setting renamed, a value with a new meaning, 
 raises `FORMAT_VERSION` in `src/backup.js` and adds a step to `MIGRATIONS` there that converts the
 previous format.
 
-The extension's popup closes while a file is being chosen on most systems, so **Import…** in the
-popup opens the panel in a tab; click the import button there again to pick the file.
+Choosing a file takes the focus away from the extension's popup, and the browser closes it
+(always on Linux) before the file reaches the extension. So **Import from file…** and **Import
+settings…** open a small import window instead: pick the file there with **Choose a file…**
+(*Wybierz plik…*) or drop it onto the window. After a successful import the window closes by
+itself once its message has had time to be read; after an error it stays open. Escape closes it at
+any time.
 
 ---
 

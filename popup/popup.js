@@ -77,6 +77,12 @@
     settingsImportWarnings: document.getElementById('settings-import-warnings'),
     settingsImportApply: document.getElementById('settings-import-apply'),
     settingsImportCancel: document.getElementById('settings-import-cancel'),
+    importWindow: document.getElementById('import-window'),
+    importTitle: document.getElementById('import-title'),
+    importDesc: document.getElementById('import-desc'),
+    importDrop: document.getElementById('import-drop'),
+    importChoose: document.getElementById('import-choose'),
+    importStatus: document.getElementById('import-status'),
     importFile: document.getElementById('import-file'),
     version: document.getElementById('version'),
     language: document.getElementById('language'),
@@ -96,10 +102,14 @@
   let learnedEntries = [];
   let pendingCount = 0;
   let learnClearArmedTimer = 0;
-  /** True when the panel runs in a browser tab, not in the toolbar popup (see openImport). */
-  let inTab = false;
-  /** What the file picker is for: 'keywords' or 'settings'. */
-  let importKind = '';
+  /**
+   * 'keywords' or 'settings' when this page is the import window (popup.html?import=…), '' in the
+   * panel. Choosing a file takes the focus away from the toolbar popup and the browser closes it
+   * (always on Linux), file and all, so the panel opens a small window for an import instead.
+   */
+  const importKind = ['keywords', 'settings'].find((kind) => kind === new URLSearchParams(location.search).get('import')) || '';
+  /** Closes the import window once the message of a finished import can be read. */
+  let importCloseTimer = 0;
   /** A read keywords file waiting for "Add new" / "Replace list": the result of parseKeywordsFile. */
   let keywordImport = null;
   /** A read settings backup waiting for "Restore": the result of parseSettingsFile. */
@@ -136,14 +146,16 @@
 
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
-    for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus]) {
+    for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus]) {
       clearTimeout(feedbackTimers.get(hint));
       feedbackTimers.delete(hint);
       hint.classList.remove('hint--ok', 'hint--error');
     }
-    // Unlike the other hints it has no text to translate again: a message in the old language goes.
+    // Unlike the other hints these have no text to translate again: a message in the old language goes.
     els.backupStatus.textContent = '';
+    els.importStatus.textContent = '';
     I18n.localize(document, i18n);
+    if (importKind) document.title = t('importWindowTitle', t(`importTitle_${importKind}`));
     render();
     if (lastModel && settings.aiProtocol === 'builtin') renderModel(lastModel); // its text is set by script
   }
@@ -422,7 +434,8 @@
    */
   async function refreshModel() {
     clearTimeout(modelTimer);
-    if (settings.aiProtocol !== 'builtin') return;
+    // The import window does not show the model card.
+    if (importKind || settings.aiProtocol !== 'builtin') return;
     const seq = ++modelSeq;
     let model;
     try {
@@ -792,19 +805,83 @@
     showFeedback(els.backupStatus, t('settingsExported'), 'ok');
   }
 
+  const IMPORT_WINDOW_WIDTH = 440;
+  const IMPORT_WINDOW_HEIGHT = 400;
   /**
-   * The file picker closes the toolbar popup on most systems (it takes the focus away), so the
-   * popup opens the panel in a tab and the user picks the file there.
+   * How long the import window stays open after a successful import, to read its message:
+   * BASE + PER_CHAR × the message's length, at most MAX (milliseconds).
    */
-  function openImport(kind) {
-    if (!inTab) {
-      chrome.tabs.create({ url: chrome.runtime.getURL(`popup/popup.html?import=${kind}`) });
-      window.close();
+  const IMPORT_CLOSE_BASE_MS = 1500;
+  const IMPORT_CLOSE_PER_CHAR_MS = 30;
+  const IMPORT_CLOSE_MAX_MS = 6000;
+
+  /**
+   * Opens the import window for `kind` (see importKind) near the toolbar button, or brings an open
+   * one to the front, and closes the popup.
+   */
+  async function openImportWindow(kind) {
+    const urlFor = (which) => chrome.runtime.getURL(`popup/popup.html?import=${which}`);
+    const url = urlFor(kind);
+    const status = kind === 'keywords' ? els.keywordFeedback : els.backupStatus;
+    try {
+      const [open] = typeof chrome.runtime.getContexts === 'function'
+        ? await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [urlFor('keywords'), urlFor('settings')] })
+        : [];
+      if (open) {
+        // The same import keeps a file already read there; the other one replaces it.
+        if (open.documentUrl !== url) await chrome.tabs.update(open.tabId, { url });
+        await chrome.windows.update(open.windowId, { focused: true });
+      } else {
+        const options = { url, type: 'popup', width: IMPORT_WINDOW_WIDTH, height: IMPORT_WINDOW_HEIGHT, focused: true };
+        const current = await chrome.windows.getCurrent().catch(() => null);
+        if (current && [current.left, current.top, current.width].every(Number.isInteger)) {
+          // Under the toolbar, where the popup was. The browser refuses a position half off the screen
+          // (e.g. with several monitors): then it places the window itself.
+          const left = Math.max(current.left, current.left + current.width - IMPORT_WINDOW_WIDTH - 16);
+          await chrome.windows.create({ ...options, left, top: current.top + 72 }).catch(() => chrome.windows.create(options));
+        } else {
+          await chrome.windows.create(options);
+        }
+      }
+    } catch (err) {
+      console.error('[ParaBene]', err);
+      showFeedback(status, t('importWindowFailed', err.message || '?'), 'error');
       return;
     }
-    importKind = kind;
+    window.close();
+  }
+
+  /** The import window shows only the import card, with the title and description of its kind. */
+  function setupImportWindow() {
+    if (!importKind) return;
+    document.documentElement.classList.add('import-mode');
+    els.importWindow.hidden = false;
+    els.importTitle.setAttribute('data-i18n', `importTitle_${importKind}`);
+    els.importDesc.setAttribute('data-i18n', `importDesc_${importKind}`);
+    // The window grows with what is shown in it (a file's summary, warnings, messages).
+    new ResizeObserver(fitImportWindow).observe(els.app);
+  }
+
+  /** Fits the import window's height to its content, at most to the screen's. */
+  function fitImportWindow() {
+    if (document.documentElement.classList.contains('i18n-pending')) return; // no texts yet
+    const frame = window.outerHeight - window.innerHeight;
+    const height = Math.min(Math.ceil(els.app.getBoundingClientRect().height) + frame, screen.availHeight);
+    if (Math.abs(height - window.outerHeight) < 2) return;
+    chrome.windows.update(chrome.windows.WINDOW_ID_CURRENT, { height }).catch(() => {});
+  }
+
+  function chooseImportFile() {
+    clearTimeout(importCloseTimer);
     els.importFile.value = '';
     els.importFile.click();
+  }
+
+  /** After a finished import the window has done its job: it closes once the message can be read. */
+  function closeImportWindowSoon(message) {
+    clearTimeout(importCloseTimer);
+    const delay = Math.min(IMPORT_CLOSE_MAX_MS, IMPORT_CLOSE_BASE_MS + message.length * IMPORT_CLOSE_PER_CHAR_MS);
+    importCloseTimer = setTimeout(() => window.close(), delay);
   }
 
   function importErrorText(err) {
@@ -812,13 +889,9 @@
     return t(`importError_${code}`, err && err.message ? err.message : '?');
   }
 
-  async function readImportFile() {
-    const file = els.importFile.files && els.importFile.files[0];
-    els.importFile.value = '';
-    if (!file) return;
-    const kind = importKind;
-    const status = kind === 'keywords' ? els.keywordFeedback : els.backupStatus;
-    const fallback = kind === 'keywords' ? 'keywordHint' : null;
+  /** Reads a chosen or dropped file and shows what importing it would do. */
+  async function readImportFile(file) {
+    clearTimeout(importCloseTimer);
     keywordImport = null;
     settingsImport = null;
     renderKeywordImport();
@@ -826,16 +899,23 @@
     try {
       if (file.size > Backup.MAX_FILE_BYTES) throw new Backup.BackupError('tooLarge');
       const text = await file.text();
-      if (kind === 'keywords') keywordImport = Backup.parseKeywordsFile(text);
+      if (importKind === 'keywords') keywordImport = Backup.parseKeywordsFile(text);
       else settingsImport = Backup.parseSettingsFile(text);
-      showFeedback(status, t('importReady', file.name), null, fallback);
+      showFeedback(els.importStatus, t('importReady', file.name), null);
     } catch (err) {
-      showFeedback(status, importErrorText(err), 'error');
+      showFeedback(els.importStatus, importErrorText(err), 'error');
     }
     renderKeywordImport();
     renderSettingsImport();
-    const panel = kind === 'keywords' ? els.keywordsImportPanel : els.settingsImportPanel;
-    if (!panel.hidden) panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  function cancelImport() {
+    keywordImport = null;
+    settingsImport = null;
+    renderKeywordImport();
+    renderSettingsImport();
+    showFeedback(els.importStatus, '', null);
+    els.importChoose.focus();
   }
 
   function newKeywords() {
@@ -861,17 +941,18 @@
     const added = newKeywords();
     keywordImport = null;
     renderKeywordImport();
+    let message;
     if (replace) {
-      recentlyAdded = new Set(added);
       await chrome.storage.local.set({ keywords: imported });
-      showFeedback(els.keywordFeedback, plural('keywordsReplaced', imported.length), 'ok', 'keywordHint');
+      message = plural('keywordsReplaced', imported.length);
     } else if (added.length === 0) {
-      showFeedback(els.keywordFeedback, t('keywordsImportNothingNew'), 'ok', 'keywordHint');
+      message = t('keywordsImportNothingNew');
     } else {
-      recentlyAdded = new Set(added);
       await chrome.storage.local.set({ keywords: [...settings.keywords, ...added] });
-      showFeedback(els.keywordFeedback, plural('keywordsAdded', added.length), 'ok', 'keywordHint');
+      message = plural('keywordsAdded', added.length);
     }
+    showFeedback(els.importStatus, message, 'ok');
+    closeImportWindowSoon(message);
   }
 
   /** A warning from parseSettingsFile → a list item; setting names are shown as they are stored. */
@@ -940,23 +1021,17 @@
         kind = 'error';
       }
     }
-    showFeedback(els.backupStatus, sentences.join(' '), kind);
-  }
-
-  /** Opened by the popup for an import (?import=keywords|settings): point at the button to click. */
-  function showImportInTab() {
-    const kind = new URLSearchParams(location.search).get('import');
-    if (kind !== 'keywords' && kind !== 'settings') return;
-    const button = kind === 'keywords' ? els.keywordsImport : els.settingsImport;
-    const status = kind === 'keywords' ? els.keywordFeedback : els.backupStatus;
-    showFeedback(status, t('importInTab'), null);
-    button.scrollIntoView({ block: 'center' });
-    button.focus();
+    const message = sentences.join(' ');
+    showFeedback(els.importStatus, message, kind);
+    // A failure stays on screen to be read.
+    if (kind === 'ok') closeImportWindowSoon(message);
   }
 
   /* ---------------- Current tab ---------------- */
 
   async function refreshStats() {
+    // The import window does not show statistics; its own tab is the active one there.
+    if (importKind) return;
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       activeTabId = tab ? tab.id : null;
@@ -973,6 +1048,54 @@
 
   /* ---------------- Events ---------------- */
 
+  /** The import window: the file comes from the picker or is dropped onto the window; Escape closes it. */
+  function bindImportWindow() {
+    const reportFailure = (err) => showFeedback(els.importStatus, importErrorText(err), 'error');
+    els.importChoose.addEventListener('click', chooseImportFile);
+    els.importFile.addEventListener('change', () => {
+      const [file] = els.importFile.files;
+      els.importFile.value = '';
+      if (file) readImportFile(file);
+    });
+    els.keywordsImportMerge.addEventListener('click', () => applyKeywordImport(false).catch(reportFailure));
+    els.keywordsImportReplace.addEventListener('click', () => applyKeywordImport(true).catch(reportFailure));
+    els.keywordsImportCancel.addEventListener('click', cancelImport);
+    els.settingsImportApply.addEventListener('click', () => applySettingsImport().catch(reportFailure));
+    els.settingsImportCancel.addEventListener('click', cancelImport);
+
+    // dragenter/dragleave also fire between the window's own elements: count them to know when the file leaves.
+    let dragDepth = 0;
+    const carriesFile = (event) => Boolean(event.dataTransfer && event.dataTransfer.types.includes('Files'));
+    const highlight = (on) => els.importDrop.classList.toggle('dropzone--over', on);
+    document.addEventListener('dragenter', (event) => {
+      if (!carriesFile(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      highlight(true);
+    });
+    document.addEventListener('dragleave', (event) => {
+      if (!carriesFile(event)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) highlight(false);
+    });
+    document.addEventListener('dragover', (event) => {
+      if (!carriesFile(event)) return;
+      event.preventDefault(); // otherwise the browser opens the dropped file in the window
+      event.dataTransfer.dropEffect = 'copy';
+    });
+    document.addEventListener('drop', (event) => {
+      if (!carriesFile(event)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      highlight(false);
+      const [file] = event.dataTransfer.files;
+      if (file) readImportFile(file);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') window.close();
+    });
+  }
+
   function bind() {
     els.enabled.addEventListener('change', () => {
       chrome.storage.local.set({ enabled: els.enabled.checked });
@@ -980,25 +1103,10 @@
     els.keywordForm.addEventListener('submit', addKeywords);
     els.restoreDefaults.addEventListener('click', restoreDefaults);
     els.keywordsExport.addEventListener('click', exportKeywords);
-    els.keywordsImport.addEventListener('click', () => openImport('keywords'));
-    els.keywordsImportMerge.addEventListener('click', () => applyKeywordImport(false));
-    els.keywordsImportReplace.addEventListener('click', () => applyKeywordImport(true));
-    els.keywordsImportCancel.addEventListener('click', () => {
-      keywordImport = null;
-      renderKeywordImport();
-      showFeedback(els.keywordFeedback, t('keywordHint'), null);
-    });
+    els.keywordsImport.addEventListener('click', () => openImportWindow('keywords'));
     els.settingsExport.addEventListener('click', exportSettings);
-    els.settingsImport.addEventListener('click', () => openImport('settings'));
-    els.settingsImportApply.addEventListener('click', () => {
-      applySettingsImport().catch((err) => showFeedback(els.backupStatus, importErrorText(err), 'error'));
-    });
-    els.settingsImportCancel.addEventListener('click', () => {
-      settingsImport = null;
-      renderSettingsImport();
-      showFeedback(els.backupStatus, '', null);
-    });
-    els.importFile.addEventListener('change', readImportFile);
+    els.settingsImport.addEventListener('click', () => openImportWindow('settings'));
+    if (importKind) bindImportWindow();
     els.aiEnabled.addEventListener('change', () => {
       chrome.storage.local.set({ aiEnabled: els.aiEnabled.checked });
     });
@@ -1108,16 +1216,19 @@
   }
 
   async function init() {
+    setupImportWindow();
     els.version.textContent = `v${chrome.runtime.getManifest().version}`;
-    inTab = Boolean(await chrome.tabs.getCurrent().catch(() => null));
-    document.documentElement.classList.toggle('in-tab', inTab);
     bind();
     settings = await Config.load();
     await loadLog();
     await loadLearned();
     await applyLanguage(settings.language);
     document.documentElement.classList.remove('i18n-pending');
-    if (inTab) showImportInTab();
+    if (importKind) {
+      fitImportWindow();
+      els.importChoose.focus();
+      return;
+    }
     await refreshStats();
     refreshModel();
   }

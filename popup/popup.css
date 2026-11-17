@@ -468,16 +468,48 @@ body {
   margin: 0 0 0 auto;
 }
 
-/* The panel opened in a tab (choosing a file closes the extension popup) */
+/* The import window (popup.html?import=…): choosing a file closes the toolbar popup */
 
-.in-tab body {
+.import-mode body {
   width: auto;
 }
 
-.in-tab .app {
-  max-width: 440px;
+.import-mode .app {
+  max-width: 480px;
   margin: 0 auto;
-  padding-top: 24px;
+}
+
+.import-mode .app > :not(.header, .import-window),
+.import-mode .switch--main {
+  display: none;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 12px;
+  border: 2px dashed #ecc89c;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  text-align: center;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.dropzone--over {
+  border-color: var(--accent);
+  background: #ffe4c4;
+}
+
+.dropzone__text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.import-window .hint:empty {
+  display: none;
 }
 
 /* Phrase list */

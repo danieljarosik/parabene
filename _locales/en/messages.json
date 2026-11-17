@@ -1183,9 +1183,49 @@
       }
     }
   },
-  "importInTab": {
-    "message": "The extension popup closes while a file is being chosen, so the panel was opened in a tab. Click the import button again.",
-    "description": "Shown when the panel was opened in a tab to import a file."
+  "importWindowTitle": {
+    "message": "$title$ – ParaBene",
+    "description": "Title of the import window (its title bar).",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Import keywords"
+      }
+    }
+  },
+  "importTitle_keywords": {
+    "message": "Import keywords",
+    "description": "Heading of the import window for a keywords file."
+  },
+  "importTitle_settings": {
+    "message": "Import settings",
+    "description": "Heading of the import window for a settings backup."
+  },
+  "importDesc_keywords": {
+    "message": "Choose a phrase file (.txt), e.g. one saved with “Export to file”. From a settings backup (.json) only the phrases are taken.",
+    "description": "Description in the import window for a keywords file."
+  },
+  "importDesc_settings": {
+    "message": "Choose a backup file (.json) saved with “Export settings”. You will see a summary before anything is changed.",
+    "description": "Description in the import window for a settings backup."
+  },
+  "importChoose": {
+    "message": "Choose a file…",
+    "description": "Button in the import window that opens the file picker."
+  },
+  "importDropHint": {
+    "message": "or drop the file onto this window",
+    "description": "Below the file picker button: a file can also be dragged onto the window."
+  },
+  "importWindowFailed": {
+    "message": "Could not open the import window: $detail$",
+    "description": "Error when the import window could not be opened.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "No window with id: 12."
+      }
+    }
   },
   "importError_invalidJson": {
     "message": "Cannot read the file: it is not valid JSON.",
