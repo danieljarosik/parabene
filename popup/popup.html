@@ -91,8 +91,9 @@
           <select id="ai-protocol" class="input ai__select">
             <option value="simple" data-i18n="aiProtocol_simple"></option>
             <option value="basal" data-i18n="aiProtocol_basal"></option>
+            <option value="builtin" data-i18n="aiProtocol_builtin"></option>
           </select>
-          <label class="ai__label" for="ai-endpoint" data-i18n="aiEndpointLabel"></label>
+          <label class="ai__label" for="ai-endpoint" id="ai-endpoint-label" data-i18n="aiEndpointLabel"></label>
           <div class="row">
             <input
               type="url"
@@ -104,6 +105,7 @@
             <button type="button" class="btn" id="ai-test" data-i18n="aiTest"></button>
           </div>
           <p class="hint" id="ai-status" data-i18n="aiHint"></p>
+          <p class="hint" id="ai-builtin-hint" data-i18n="aiBuiltinHint" hidden></p>
 
           <label class="ai__label ai__label--section" for="ai-mode" data-i18n="aiModeLabel"></label>
           <select id="ai-mode" class="input ai__select">

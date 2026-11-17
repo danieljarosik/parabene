@@ -3,6 +3,8 @@
  * - stores the default settings on install,
  * - proxies requests to the local AI model (a fetch from the extension context
  *   is not subject to page CORS or private network restrictions),
+ * - or keeps the built-in AI model running in an offscreen document and asks it instead
+ *   (src/config.js, "Built-in model"),
  * - optionally judges pictures: fetches them, scales them down and asks the
  *   multimodal basal-serve server (src/config.js, "Optional image evaluation"),
  * - shows the number of hidden elements in the current tab on the icon badge,
@@ -47,8 +49,9 @@ async function applyEnvFile() {
   if (settings.aiProtocol && !settings.aiEndpoint) {
     // As in the panel: a protocol set alone also swaps an endpoint that is still a default one.
     const { aiEndpoint } = await chrome.storage.local.get('aiEndpoint');
-    if (aiEndpoint === undefined || Object.values(Config.DEFAULT_ENDPOINTS).includes(aiEndpoint)) {
-      settings.aiEndpoint = Config.DEFAULT_ENDPOINTS[settings.aiProtocol];
+    const fallback = Config.DEFAULT_ENDPOINTS[settings.aiProtocol]; // none for the built-in model
+    if (fallback && (aiEndpoint === undefined || Object.values(Config.DEFAULT_ENDPOINTS).includes(aiEndpoint))) {
+      settings.aiEndpoint = fallback;
     }
   }
   await chrome.storage.local.set(settings);
@@ -140,8 +143,14 @@ async function classify(text, test = false) {
   try {
     const { enabled, aiEnabled, aiEndpoint, aiProtocol, aiSensitivity, aiTopics } = await Config.load();
     if (!test && !(enabled && aiEnabled)) throw Evaluators.cancelledError();
-    if (!Config.isValidEndpoint(aiEndpoint)) throw Evaluators.codedError('invalidEndpoint', 'invalid endpoint URL');
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
+    if (aiProtocol === 'builtin') {
+      const reply = await builtinTransport(Evaluators.basalRequest(input, aiTopics));
+      const threshold = Config.AI_SENSITIVITIES[aiSensitivity];
+      const data = Evaluators.parseBasalResponse(reply, { threshold, topics: aiTopics });
+      return { ok: true, data: Object.assign(data, { threshold }) };
+    }
+    if (!Config.isValidEndpoint(aiEndpoint)) throw Evaluators.codedError('invalidEndpoint', 'invalid endpoint URL');
     const basal = aiProtocol === 'basal';
     endpoint = Config.resolveEndpoint(aiEndpoint, aiProtocol);
     const reply = await Evaluators.fetchTransport({
@@ -162,6 +171,108 @@ async function classify(text, test = false) {
     return { ok: true, data: { hide: data.hide, reason: typeof data.reason === 'string' ? data.reason : '' } };
   } catch (err) {
     return { ok: false, error: describeError(notFoundHint(err, endpoint)) };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Built-in model (offscreen document)                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The model lives in an offscreen document (offscreen/offscreen.js), not here: a service worker
+ * is stopped after 30 s without events and would have to load the model again. The document is
+ * opened whenever the filter and the AI model are on with the "builtin" request format — when the
+ * browser starts, when the extension is installed or reloaded and when the settings change — and
+ * closed otherwise, which frees the model's memory.
+ */
+let builtinOpening = null;
+let builtinSync = Promise.resolve();
+
+async function hasBuiltinDocument() {
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+  return contexts.length > 0;
+}
+
+async function openBuiltin() {
+  if (builtinOpening) return builtinOpening; // resolves once the page has loaded
+  if (await hasBuiltinDocument()) return;
+  if (!builtinOpening) {
+    builtinOpening = chrome.offscreen
+      .createDocument({
+        url: Config.BUILTIN_PAGE,
+        reasons: ['WORKERS'],
+        justification: 'Runs the local AI model that classifies page text (WebAssembly and WebGPU in a worker).',
+      })
+      .finally(() => {
+        builtinOpening = null;
+      });
+  }
+  await builtinOpening;
+}
+
+/**
+ * Sends a message to the offscreen document. A document that exists but has not run its script
+ * yet has no listener ("Receiving end does not exist"): the message is sent again for a short while.
+ */
+async function sendBuiltin(message) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await chrome.runtime.sendMessage(message);
+    } catch (err) {
+      if (attempt >= 20 || !/Receiving end does not exist/i.test(String(err && err.message))) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
+/** Opens the document and starts loading the model, or closes the document, as the settings say. */
+function syncBuiltin() {
+  const run = async () => {
+    try {
+      const { enabled, aiEnabled, aiProtocol } = await Config.load();
+      if (enabled && aiEnabled && aiProtocol === 'builtin') {
+        await openBuiltin();
+        await sendBuiltin({ type: Config.MSG.BUILTIN_LOAD });
+      } else if (await hasBuiltinDocument()) {
+        await chrome.offscreen.closeDocument();
+      }
+    } catch (err) {
+      console.warn('[ParaBene] Built-in model:', err);
+    }
+  };
+  builtinSync = builtinSync.then(run, run);
+  return builtinSync;
+}
+
+chrome.runtime.onStartup.addListener(syncBuiltin);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && ('enabled' in changes || 'aiEnabled' in changes || 'aiProtocol' in changes)) syncBuiltin();
+});
+syncBuiltin(); // every start of the service worker, including install and reload
+
+/** Asks the model in the offscreen document; resolves with its basal reply. */
+async function builtinTransport(body) {
+  await openBuiltin();
+  const timeoutMs = Config.BUILTIN_TIMEOUT_MS;
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(Evaluators.codedError('timeout', `timed out after ${timeoutMs} ms`, String(timeoutMs))),
+      timeoutMs
+    );
+  });
+  try {
+    const response = await Promise.race([
+      sendBuiltin({ type: Config.MSG.BUILTIN_EVALUATE, body }),
+      timeout,
+    ]);
+    if (!response || !response.ok) {
+      const error = (response && response.error) || { code: 'noResponse' };
+      throw Evaluators.codedError(error.code, error.detail ? `${error.code}: ${error.detail}` : error.code, error.detail);
+    }
+    return response.data;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
