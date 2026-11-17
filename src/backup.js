@@ -1,13 +1,15 @@
 /*
- * ParaBene – settings backup and keyword files (export / import in the panel).
+ * ParaBene – settings backup, keyword and excluded site files (export / import in the panel).
  *
- * Two kinds of files:
+ * File formats:
  * - keywords (.txt): one phrase per line, lines starting with "#" are comments (the first one
  *   names the format: "# parabene-keywords 1"). Meant to be edited by hand; commas and
  *   semicolons separate phrases too, as in the panel's input. A phrase that itself starts with
  *   "#" or "\" is written with a "\" in front ("\#wypadek"), which the importer removes (as in
  *   .gitignore). The importer also accepts a settings backup (it takes the phrases from it) and a
  *   JSON array of strings.
+ * - excluded sites (.txt): one hostname per line, with "# parabene-sites 1" as the first comment.
+ *   The importer also accepts HTTP(S) URLs, a JSON array of strings or a settings backup.
  * - settings backup (.json): every setting, the keywords among them, plus the learned examples:
  *     { "format": "parabene-settings", "formatVersion": 1, "extension": "ParaBene",
  *       "extensionVersion": "1.0.0", "exportedAt": "<ISO date>",
@@ -31,8 +33,10 @@
 
   const SETTINGS_FORMAT = 'parabene-settings';
   const KEYWORDS_FORMAT = 'parabene-keywords';
+  const SITES_FORMAT = 'parabene-sites';
   const FORMAT_VERSION = 1;
   const KEYWORDS_VERSION = 1;
+  const SITES_VERSION = 1;
   /** Larger files are not read (a full backup with 300 examples is well under 1 MB). */
   const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -91,6 +95,18 @@
     return { keywords, skipped };
   }
 
+  /** Hostnames from a file: normalised, without duplicates; invalid entries are counted. */
+  function cleanSites(list) {
+    const sites = new Set();
+    let skipped = 0;
+    for (const entry of list) {
+      const site = Config.normalizeSite(entry);
+      if (site) sites.add(site);
+      else skipped += 1;
+    }
+    return { sites: [...sites], skipped };
+  }
+
   /* ---------------- Keywords file ---------------- */
 
   /** A phrase starting with "#" (a comment otherwise) or "\" (the escape itself) gets a "\" in front. */
@@ -104,10 +120,14 @@
     return /^\\[#\\]/.test(trimmed) ? trimmed.slice(1) : phrase;
   }
 
+  function buildListFile(format, version, entries, header = []) {
+    const comments = [`${format} ${version}`, ...header].map((line) => `# ${line}`.trimEnd());
+    return [...comments, '', ...entries, ''].join('\n');
+  }
+
   /** `header`: comment lines (already translated) put under the format line. */
   function buildKeywordsFile(keywords, header) {
-    const comments = [`${KEYWORDS_FORMAT} ${KEYWORDS_VERSION}`, ...(header || [])].map((line) => `# ${line}`.trimEnd());
-    return [...comments, '', ...keywords.map(escapeKeyword), ''].join('\n');
+    return buildListFile(KEYWORDS_FORMAT, KEYWORDS_VERSION, keywords.map(escapeKeyword), header);
   }
 
   /**
@@ -116,6 +136,7 @@
    */
   function parseKeywordsFile(text) {
     const body = stripBom(text).trim();
+    if (isSitesFile(body)) throw new BackupError('sitesFile');
     let list;
     let fromSettings = false;
     if (body.startsWith('{') || body.startsWith('[')) {
@@ -142,6 +163,54 @@
     const { keywords, skipped } = cleanKeywords(list);
     if (keywords.length === 0) throw new BackupError('noKeywords');
     return { keywords, skipped, fromSettings };
+  }
+
+  /* ---------------- Excluded sites file ---------------- */
+
+  function isSitesFile(body) {
+    return /^#\s*parabene-sites\b/.test(body);
+  }
+
+  function buildSitesFile(sites, header) {
+    return buildListFile(SITES_FORMAT, SITES_VERSION, sites, header);
+  }
+
+  /**
+   * Text of an excluded sites file → { sites, skipped, fromSettings }.
+   * Throws BackupError: invalidJson, notParabene, keywordsFile, noSites (and the codes of parseSettingsFile).
+   */
+  function parseSitesFile(text) {
+    const body = stripBom(text).trim();
+    if (/^#\s*parabene-keywords\b/.test(body)) throw new BackupError('keywordsFile');
+    let list = null;
+    let invalidJson = false;
+    if (body.startsWith('{')) {
+      const data = parseJson(body);
+      if (isObject(data) && data.format === SETTINGS_FORMAT) {
+        const parsed = parseSettingsFile(body);
+        if (!parsed.settings.excludedSites?.length) throw new BackupError('noSites');
+        const skipped = parsed.warnings.find((warning) => warning.code === 'sitesSkipped');
+        return { sites: parsed.settings.excludedSites, skipped: skipped ? skipped.count : 0, fromSettings: true };
+      }
+      throw new BackupError('notParabene');
+    }
+    if (body.startsWith('[')) {
+      // A JSON array, or a text file whose first line starts with "[" (an IPv6 host, a typo):
+      // that one is read line by line, so a single bad line does not block the rest.
+      try {
+        list = JSON.parse(body); // starts with "[", so it can only be an array
+      } catch (_) {
+        invalidJson = true;
+      }
+    }
+    if (!list) {
+      list = body.split(/\r?\n/).filter((line) => !line.trim().startsWith('#'))
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+    const { sites, skipped } = cleanSites(list);
+    if (sites.length === 0) throw new BackupError(invalidJson ? 'invalidJson' : 'noSites');
+    return { sites, skipped, fromSettings: false };
   }
 
   /* ---------------- Settings backup ---------------- */
@@ -178,12 +247,14 @@
    *   learned:   the examples (raw objects, checked again by the service worker) or null,
    *   meta:      { formatVersion, extensionVersion, exportedAt },
    *   warnings:  [{ code, items?, count?, version? }] — what the user should be told:
-   *              newerFormat, olderFormat, unknownKeys, invalidValues, missingKeys, keywordsSkipped
+   *              newerFormat, olderFormat, unknownKeys, invalidValues, missingKeys, keywordsSkipped,
+   *              sitesSkipped
    * }.
-   * Throws BackupError: invalidJson, notParabene, keywordsFile, unsupportedVersion.
+   * Throws BackupError: invalidJson, notParabene, keywordsFile, sitesFile, unsupportedVersion.
    */
   function parseSettingsFile(text) {
     const body = stripBom(text).trim();
+    if (isSitesFile(body)) throw new BackupError('sitesFile');
     if (!body.startsWith('{')) {
       throw new BackupError(body.startsWith('[') || body.startsWith('#') ? 'keywordsFile' : 'notParabene');
     }
@@ -216,6 +287,20 @@
         const { keywords, skipped } = cleanKeywords(value);
         settings.keywords = keywords;
         if (skipped) warnings.push({ code: 'keywordsSkipped', count: skipped });
+      } else if (key === 'excludedSites') {
+        // As with phrases, one bad entry does not reject the whole list.
+        if (!Array.isArray(value)) {
+          invalid.push(key);
+          continue;
+        }
+        const { sites, skipped } = cleanSites(value);
+        // Nothing valid in a non-empty list: keep the current list rather than clearing it.
+        if (sites.length === 0 && skipped > 0) {
+          invalid.push(key);
+          continue;
+        }
+        settings.excludedSites = sites;
+        if (skipped) warnings.push({ code: 'sitesSkipped', count: skipped });
       } else {
         const clean = Config.validateSetting(key, value);
         if (clean === undefined) invalid.push(key);
@@ -257,11 +342,15 @@
     KEYWORDS_FORMAT,
     FORMAT_VERSION,
     KEYWORDS_VERSION,
+    SITES_FORMAT,
+    SITES_VERSION,
     MAX_FILE_BYTES,
     BackupError,
     cleanKeywords,
     buildKeywordsFile,
     parseKeywordsFile,
+    buildSitesFile,
+    parseSitesFile,
     buildSettingsFile,
     parseSettingsFile,
     fileStamp,

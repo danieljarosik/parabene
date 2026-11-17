@@ -1296,7 +1296,7 @@
     }
   },
   "settingsImportContents": {
-    "message": "Ustawienia: $settings$ · frazy: $keywords$ · wyuczone przykłady: $learned$.",
+    "message": "Ustawienia: $settings$ · frazy: $keywords$ · wykluczone witryny: $sites$ · wyuczone przykłady: $learned$.",
     "description": "What a settings backup contains.",
     "placeholders": {
       "settings": {
@@ -1307,14 +1307,18 @@
         "content": "$2",
         "example": "42"
       },
-      "learned": {
+      "sites": {
         "content": "$3",
+        "example": "3"
+      },
+      "learned": {
+        "content": "$4",
         "example": "7"
       }
     }
   },
   "settingsImportNote": {
-    "message": "Przywrócenie zastąpi obecne ustawienia i listę fraz; wyuczone przykłady zostaną dołączone do obecnych.",
+    "message": "Przywrócenie zastąpi ustawienia i listy zawarte w kopii. Wyuczone przykłady zostaną dołączone do obecnych.",
     "description": "Explains what restoring a backup does."
   },
   "settingsImportApply": {
@@ -1436,5 +1440,121 @@
         "example": "2"
       }
     }
+  },
+  "importWarn_sitesSkipped": {
+    "message": "Pominięto nieprawidłowe witryny: $count$.",
+    "description": "Import warning: some excluded sites in the backup were rejected.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "sitesTitle": {
+    "message": "Wykluczone witryny"
+  },
+  "sitePlaceholder": {
+    "message": "np. example.com"
+  },
+  "siteInputLabel": {
+    "message": "Domena lub adres witryny"
+  },
+  "sitesHint": {
+    "message": "Wpisz domenę lub adres HTTP(S). Wykluczenie obejmuje też subdomeny."
+  },
+  "sitesEmpty": {
+    "message": "Lista wykluczonych witryn jest pusta."
+  },
+  "excludeCurrentSite": {
+    "message": "Wyłącz na tej witrynie"
+  },
+  "statSiteExcluded": {
+    "message": "Filtrowanie wyłączone na tej witrynie"
+  },
+  "removeSiteTitle": {
+    "message": "Usuń z listy wykluczeń"
+  },
+  "removeSiteLabel": {
+    "message": "Usuń $site$ z listy wykluczeń",
+    "placeholders": {
+      "site": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "siteInvalid": {
+    "message": "Podaj prawidłową domenę lub adres HTTP(S)."
+  },
+  "siteDuplicate": {
+    "message": "Witryna $site$ jest już wykluczona.",
+    "placeholders": {
+      "site": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "siteAdded": {
+    "message": "Wykluczono witrynę $site$.",
+    "placeholders": {
+      "site": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "sitesSaveFailed": {
+    "message": "Nie udało się zapisać listy wykluczeń."
+  },
+  "sitesFileHint": {
+    "message": "Jedna domena lub adres HTTP(S) w wierszu. Wiersze zaczynające się od # są pomijane."
+  },
+  "sitesExported": {
+    "message": "Wyeksportowano listę wykluczonych witryn."
+  },
+  "importTitle_sites": {
+    "message": "Importuj wykluczone witryny"
+  },
+  "importDesc_sites": {
+    "message": "Wybierz plik tekstowy z witrynami lub kopię zapasową ParaBene."
+  },
+  "sitesImportSummary": {
+    "message": "Witryny w pliku: $total$. Nowe wpisy: $fresh$.",
+    "placeholders": {
+      "total": {
+        "content": "$1",
+        "example": "5"
+      },
+      "fresh": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "sitesSkipped": {
+    "message": "Pominięto nieprawidłowe wpisy: $count$.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "sitesImportFromSettings": {
+    "message": "Witryny pochodzą z kopii zapasowej ustawień."
+  },
+  "sitesImported": {
+    "message": "Zapisano listę wykluczonych witryn."
+  },
+  "sitesImportNothingNew": {
+    "message": "Plik nie zawiera nowych witryn."
+  },
+  "importError_noSites": {
+    "message": "W pliku nie ma żadnych prawidłowych witryn."
+  },
+  "importError_sitesFile": {
+    "message": "To lista wykluczonych witryn. Zaimportuj ją w sekcji „Wykluczone witryny”."
   }
 }

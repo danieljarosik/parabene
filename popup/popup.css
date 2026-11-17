@@ -379,7 +379,7 @@ body {
   text-decoration: underline;
 }
 
-/* Keyword actions: restore defaults · export · import */
+/* List actions */
 
 .card__actions {
   display: flex;
@@ -403,9 +403,11 @@ body {
 .card__actions-group {
   display: flex;
   gap: 12px;
+  /* Stays on the right when the action before it is hidden ("Turn off on this site"). */
+  margin-left: auto;
 }
 
-/* Backup, and the confirmation of an import (keywords or settings) */
+/* Backup and import confirmation */
 
 .hint--lead {
   margin: 0 0 10px;
@@ -538,6 +540,10 @@ body {
 
 .chip--new {
   animation: chip-in 0.6s ease;
+}
+
+.chip__label {
+  overflow-wrap: anywhere;
 }
 
 .chip--masked .chip__label {

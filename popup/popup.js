@@ -19,6 +19,15 @@
     statAiImage: document.getElementById('stat-ai-image'),
     statPassedItem: document.getElementById('stat-passed-item'),
     statPassed: document.getElementById('stat-passed'),
+    siteForm: document.getElementById('site-form'),
+    siteInput: document.getElementById('site-input'),
+    siteFeedback: document.getElementById('site-feedback'),
+    siteList: document.getElementById('site-list'),
+    siteCount: document.getElementById('site-count'),
+    siteEmpty: document.getElementById('site-empty'),
+    excludeCurrentSite: document.getElementById('exclude-current-site'),
+    sitesExport: document.getElementById('sites-export'),
+    sitesImport: document.getElementById('sites-import'),
     keywordForm: document.getElementById('keyword-form'),
     keywordInput: document.getElementById('keyword-input'),
     keywordFeedback: document.getElementById('keyword-feedback'),
@@ -28,11 +37,11 @@
     restoreDefaults: document.getElementById('restore-defaults'),
     keywordsExport: document.getElementById('keywords-export'),
     keywordsImport: document.getElementById('keywords-import'),
-    keywordsImportPanel: document.getElementById('keywords-import-panel'),
-    keywordsImportSummary: document.getElementById('keywords-import-summary'),
-    keywordsImportMerge: document.getElementById('keywords-import-merge'),
-    keywordsImportReplace: document.getElementById('keywords-import-replace'),
-    keywordsImportCancel: document.getElementById('keywords-import-cancel'),
+    listImportPanel: document.getElementById('list-import-panel'),
+    listImportSummary: document.getElementById('list-import-summary'),
+    listImportMerge: document.getElementById('list-import-merge'),
+    listImportReplace: document.getElementById('list-import-replace'),
+    listImportCancel: document.getElementById('list-import-cancel'),
     aiEnabled: document.getElementById('ai-enabled'),
     aiSettings: document.getElementById('ai-settings'),
     aiProtocol: document.getElementById('ai-protocol'),
@@ -90,6 +99,7 @@
 
   let settings = Config.sanitize({});
   let activeTabId = null;
+  let activeSite = '';
   let tabReachable = false;
   /** Hint element → the timer that puts its standing hint back. */
   const feedbackTimers = new Map();
@@ -103,15 +113,17 @@
   let pendingCount = 0;
   let learnClearArmedTimer = 0;
   /**
-   * 'keywords' or 'settings' when this page is the import window (popup.html?import=…), '' in the
+   * The file kind when this page is the import window (popup.html?import=…), '' in the
    * panel. Choosing a file takes the focus away from the toolbar popup and the browser closes it
    * (always on Linux), file and all, so the panel opens a small window for an import instead.
    */
-  const importKind = ['keywords', 'settings'].find((kind) => kind === new URLSearchParams(location.search).get('import')) || '';
+  const IMPORT_KINDS = ['keywords', 'sites', 'settings'];
+  const requestedImport = new URLSearchParams(location.search).get('import');
+  const importKind = IMPORT_KINDS.includes(requestedImport) ? requestedImport : '';
   /** Closes the import window once the message of a finished import can be read. */
   let importCloseTimer = 0;
-  /** A read keywords file waiting for "Add new" / "Replace list": the result of parseKeywordsFile. */
-  let keywordImport = null;
+  /** A list file waiting for "Add new" / "Replace list". */
+  let listImport = null;
   /** A read settings backup waiting for "Restore": the result of parseSettingsFile. */
   let settingsImport = null;
 
@@ -146,7 +158,7 @@
 
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
-    for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus]) {
+    for (const hint of [els.keywordFeedback, els.siteFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus]) {
       clearTimeout(feedbackTimers.get(hint));
       feedbackTimers.delete(hint);
       hint.classList.remove('hint--ok', 'hint--error');
@@ -211,38 +223,49 @@
 
     renderLanguagePicker();
     renderKeywords();
+    renderSites();
     renderStatHint();
     renderStats();
     renderLog();
     renderLearned();
-    renderKeywordImport();
+    renderListImport();
     renderSettingsImport();
   }
 
-  function renderKeywords() {
-    const sorted = [...settings.keywords].sort(collator.compare);
+  function renderChips(list, values, { masked, added, removeTitle, removeLabel, onRemove }) {
+    const sorted = [...values].sort(collator.compare);
     const fragment = document.createDocumentFragment();
-    for (const keyword of sorted) {
+    for (const value of sorted) {
       const item = document.createElement('li');
       item.className = 'chip';
-      if (profanity.has(keyword)) item.classList.add('chip--masked');
-      if (recentlyAdded.has(keyword)) item.classList.add('chip--new');
+      if (masked?.has(value)) item.classList.add('chip--masked');
+      if (added?.has(value)) item.classList.add('chip--new');
 
       const label = document.createElement('span');
       label.className = 'chip__label';
-      label.textContent = keyword;
+      label.textContent = value;
 
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.textContent = '×';
-      remove.title = t('removeKeywordTitle');
-      remove.setAttribute('aria-label', t('removeKeywordLabel', keyword));
-      remove.addEventListener('click', () => removeKeyword(keyword));
+      remove.title = t(removeTitle);
+      remove.setAttribute('aria-label', t(removeLabel, value));
+      remove.addEventListener('click', () => onRemove(value));
 
       item.append(label, remove);
       fragment.append(item);
     }
-    els.keywordList.replaceChildren(fragment);
+    list.replaceChildren(fragment);
+  }
+
+  function renderKeywords() {
+    renderChips(els.keywordList, settings.keywords, {
+      masked: profanity,
+      added: recentlyAdded,
+      removeTitle: 'removeKeywordTitle',
+      removeLabel: 'removeKeywordLabel',
+      onRemove: removeKeyword,
+    });
     els.keywordCount.textContent = String(settings.keywords.length);
     els.keywordEmpty.hidden = settings.keywords.length > 0;
     // A file without phrases could not be imported back.
@@ -250,9 +273,28 @@
     recentlyAdded = new Set();
   }
 
+  function renderSites() {
+    const { excludedSites } = settings;
+    renderChips(els.siteList, excludedSites, {
+      removeTitle: 'removeSiteTitle',
+      removeLabel: 'removeSiteLabel',
+      onRemove: (site) => changeExcludedSites((current) => current.filter((entry) => entry !== site)).catch(reportSiteError),
+    });
+    els.siteCount.textContent = i18n.formatNumber(excludedSites.length);
+    els.siteEmpty.hidden = excludedSites.length > 0;
+    els.sitesExport.disabled = excludedSites.length === 0;
+    renderCurrentSiteAction();
+  }
+
+  function renderCurrentSiteAction() {
+    els.excludeCurrentSite.hidden = !activeSite || Config.isSiteExcluded(settings.excludedSites, activeSite);
+  }
+
   function renderStatHint() {
     if (!settings.enabled) {
       els.statHint.textContent = t('statOff');
+    } else if (Config.isSiteExcluded(settings.excludedSites, activeSite)) {
+      els.statHint.textContent = t('statSiteExcluded');
     } else if (!tabReachable) {
       els.statHint.textContent = t('statUnreachable');
     } else {
@@ -267,6 +309,11 @@
   }
 
   function renderStats() {
+    if (Config.isSiteExcluded(settings.excludedSites, activeSite)) {
+      els.hiddenCount.textContent = i18n.formatNumber(0);
+      els.statSplit.hidden = true;
+      return;
+    }
     els.hiddenCount.textContent = stats ? i18n.formatNumber(stats.hidden) : '–';
     const bySource = stats && stats.bySource;
     const passed = (stats && stats.passed) || 0;
@@ -356,6 +403,41 @@
     recentlyAdded = new Set(missing);
     await chrome.storage.local.set({ keywords: [...settings.keywords, ...missing] });
     showFeedback(els.keywordFeedback, plural('defaultsRestored', missing.length), 'ok', 'keywordHint');
+  }
+
+  /* ---------------- Excluded sites ---------------- */
+
+  const SITES_LOCK = 'parabene:excludedSites';
+
+  /** The toolbar and the import window can edit the list at the same time. */
+  function changeExcludedSites(change) {
+    return navigator.locks.request(SITES_LOCK, async () => {
+      const stored = await chrome.storage.local.get('excludedSites');
+      const { excludedSites } = Config.sanitize(stored);
+      const next = change(excludedSites);
+      if (next === excludedSites) return false;
+      await chrome.storage.local.set({ excludedSites: next });
+      return true;
+    });
+  }
+
+  function reportSiteError(err) {
+    console.error('[ParaBene]', err);
+    showFeedback(els.siteFeedback, t('sitesSaveFailed'), 'error', 'sitesHint');
+  }
+
+  async function addSite(value, fromCurrentTab) {
+    const site = Config.normalizeSite(value);
+    if (!site) {
+      showFeedback(els.siteFeedback, t('siteInvalid'), 'error', 'sitesHint');
+      return;
+    }
+    const added = await changeExcludedSites((current) => {
+      const alreadyExcluded = fromCurrentTab ? Config.isSiteExcluded(current, site) : current.includes(site);
+      return alreadyExcluded ? current : [...current, site];
+    });
+    if (added && !fromCurrentTab && els.siteInput.value === value) els.siteInput.value = '';
+    showFeedback(els.siteFeedback, t(added ? 'siteAdded' : 'siteDuplicate', site), added ? 'ok' : 'error', 'sitesHint');
   }
 
   /* ---------------- Local AI model ---------------- */
@@ -773,7 +855,7 @@
   }
 
 
-  /* ---------------- Export / import: keywords and the settings backup ---------------- */
+  /* ---------------- Export / import ---------------- */
 
   function formatDateTime(value) {
     const date = value instanceof Date ? value : new Date(value);
@@ -791,6 +873,14 @@
     const sorted = [...settings.keywords].sort(collator.compare);
     saveFile(`parabene-keywords-${Backup.fileStamp(now)}.txt`, Backup.buildKeywordsFile(sorted, header), 'text/plain');
     showFeedback(els.keywordFeedback, plural('keywordsExported', sorted.length), 'ok', 'keywordHint');
+  }
+
+  function exportSites() {
+    if (settings.excludedSites.length === 0) return;
+    const sorted = [...settings.excludedSites].sort(collator.compare);
+    const text = Backup.buildSitesFile(sorted, [t('sitesFileHint')]);
+    saveFile(`parabene-sites-${Backup.fileStamp()}.txt`, text, 'text/plain');
+    showFeedback(els.siteFeedback, t('sitesExported'), 'ok', 'sitesHint');
   }
 
   function exportSettings() {
@@ -822,10 +912,10 @@
   async function openImportWindow(kind) {
     const urlFor = (which) => chrome.runtime.getURL(`popup/popup.html?import=${which}`);
     const url = urlFor(kind);
-    const status = kind === 'keywords' ? els.keywordFeedback : els.backupStatus;
+    const status = { keywords: els.keywordFeedback, sites: els.siteFeedback, settings: els.backupStatus }[kind];
     try {
       const [open] = typeof chrome.runtime.getContexts === 'function'
-        ? await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [urlFor('keywords'), urlFor('settings')] })
+        ? await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: IMPORT_KINDS.map(urlFor) })
         : [];
       if (open) {
         // The same import keeps a file already read there; the other one replaces it.
@@ -892,64 +982,79 @@
   /** Reads a chosen or dropped file and shows what importing it would do. */
   async function readImportFile(file) {
     clearTimeout(importCloseTimer);
-    keywordImport = null;
+    listImport = null;
     settingsImport = null;
-    renderKeywordImport();
+    renderListImport();
     renderSettingsImport();
     try {
       if (file.size > Backup.MAX_FILE_BYTES) throw new Backup.BackupError('tooLarge');
       const text = await file.text();
-      if (importKind === 'keywords') keywordImport = Backup.parseKeywordsFile(text);
-      else settingsImport = Backup.parseSettingsFile(text);
+      if (importKind === 'keywords') {
+        const { keywords, skipped, fromSettings } = Backup.parseKeywordsFile(text);
+        listImport = { entries: keywords, skipped, fromSettings };
+      } else if (importKind === 'sites') {
+        const { sites, skipped, fromSettings } = Backup.parseSitesFile(text);
+        listImport = { entries: sites, skipped, fromSettings };
+      } else {
+        settingsImport = Backup.parseSettingsFile(text);
+      }
       showFeedback(els.importStatus, t('importReady', file.name), null);
     } catch (err) {
       showFeedback(els.importStatus, importErrorText(err), 'error');
     }
-    renderKeywordImport();
+    renderListImport();
     renderSettingsImport();
   }
 
   function cancelImport() {
-    keywordImport = null;
+    listImport = null;
     settingsImport = null;
-    renderKeywordImport();
+    renderListImport();
     renderSettingsImport();
     showFeedback(els.importStatus, '', null);
     els.importChoose.focus();
   }
 
-  function newKeywords() {
-    if (!keywordImport) return [];
-    const existing = new Set(settings.keywords);
-    return keywordImport.keywords.filter((keyword) => !existing.has(keyword));
+  function newEntries(imported, current) {
+    const existing = new Set(current);
+    return imported.filter((entry) => !existing.has(entry));
   }
 
-  function renderKeywordImport() {
-    els.keywordsImportPanel.hidden = !keywordImport;
-    if (!keywordImport) return;
-    const fresh = newKeywords().length;
-    const sentences = [plural('keywordsImportFound', keywordImport.keywords.length), t('keywordsImportNew', i18n.formatNumber(fresh))];
-    if (keywordImport.skipped) sentences.push(t('keywordsSkipped', i18n.formatNumber(keywordImport.skipped)));
-    if (keywordImport.fromSettings) sentences.push(t('keywordsImportFromSettings'));
-    els.keywordsImportSummary.textContent = sentences.join(' ');
-    els.keywordsImportMerge.disabled = fresh === 0;
+  function renderListImport() {
+    els.listImportPanel.hidden = !listImport;
+    if (!listImport) return;
+    const { entries, skipped, fromSettings } = listImport;
+    const sites = importKind === 'sites';
+    const fresh = newEntries(entries, sites ? settings.excludedSites : settings.keywords).length;
+    const sentences = sites
+      ? [t('sitesImportSummary', [i18n.formatNumber(entries.length), i18n.formatNumber(fresh)])]
+      : [plural('keywordsImportFound', entries.length), t('keywordsImportNew', i18n.formatNumber(fresh))];
+    if (skipped) sentences.push(t(sites ? 'sitesSkipped' : 'keywordsSkipped', i18n.formatNumber(skipped)));
+    if (fromSettings) sentences.push(t(sites ? 'sitesImportFromSettings' : 'keywordsImportFromSettings'));
+    els.listImportSummary.textContent = sentences.join(' ');
+    els.listImportMerge.disabled = fresh === 0;
   }
 
-  async function applyKeywordImport(replace) {
-    if (!keywordImport) return;
-    const imported = keywordImport.keywords;
-    const added = newKeywords();
-    keywordImport = null;
-    renderKeywordImport();
+  async function applyListImport(replace) {
+    if (!listImport) return;
+    const imported = listImport.entries;
+    listImport = null;
+    renderListImport();
     let message;
-    if (replace) {
+    if (importKind === 'sites') {
+      const saved = await changeExcludedSites((current) => {
+        if (replace) return imported;
+        const added = newEntries(imported, current);
+        return added.length ? [...current, ...added] : current;
+      });
+      message = t(saved ? 'sitesImported' : 'sitesImportNothingNew');
+    } else if (replace) {
       await chrome.storage.local.set({ keywords: imported });
       message = plural('keywordsReplaced', imported.length);
-    } else if (added.length === 0) {
-      message = t('keywordsImportNothingNew');
     } else {
-      await chrome.storage.local.set({ keywords: [...settings.keywords, ...added] });
-      message = plural('keywordsAdded', added.length);
+      const added = newEntries(imported, settings.keywords);
+      if (added.length) await chrome.storage.local.set({ keywords: [...settings.keywords, ...added] });
+      message = added.length ? plural('keywordsAdded', added.length) : t('keywordsImportNothingNew');
     }
     showFeedback(els.importStatus, message, 'ok');
     closeImportWindowSoon(message);
@@ -969,7 +1074,7 @@
         item.append(code);
       });
       item.append(after);
-    } else if (warning.code === 'keywordsSkipped') {
+    } else if (warning.count !== undefined) {
       item.textContent = t(key, i18n.formatNumber(warning.count));
     } else {
       item.textContent = t(key, [String(warning.version), String(Backup.FORMAT_VERSION)]);
@@ -981,12 +1086,14 @@
     els.settingsImportPanel.hidden = !settingsImport;
     if (!settingsImport) return;
     const { settings: found, learned, meta, warnings } = settingsImport;
-    const settingCount = Object.keys(found).filter((key) => key !== 'keywords').length;
+    // The two lists are counted by their entries, not as one setting each.
+    const settingCount = Object.keys(found).filter((key) => key !== 'keywords' && key !== 'excludedSites').length;
     const sentences = [
       t('settingsImportSummary', [meta.exportedAt ? formatDateTime(meta.exportedAt) : '?', meta.extensionVersion || '?']),
       t('settingsImportContents', [
         i18n.formatNumber(settingCount),
         found.keywords ? i18n.formatNumber(found.keywords.length) : '–',
+        found.excludedSites ? i18n.formatNumber(found.excludedSites.length) : '–',
         i18n.formatNumber(learned ? learned.length : 0),
       ]),
     ];
@@ -1002,7 +1109,11 @@
     renderSettingsImport();
     // Messages below in the restored language (the storage listener switches it too).
     if (found.language && found.language !== settings.language) await applyLanguage(found.language);
-    await chrome.storage.local.set(found);
+    if ('excludedSites' in found) {
+      await navigator.locks.request(SITES_LOCK, () => chrome.storage.local.set(found));
+    } else {
+      await chrome.storage.local.set(found);
+    }
     const sentences = [t('settingsImported')];
     let kind = 'ok';
     if (learned && learned.length) {
@@ -1035,6 +1146,8 @@
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       activeTabId = tab ? tab.id : null;
+      activeSite = Config.siteHost(tab?.url);
+      renderCurrentSiteAction();
       if (activeTabId == null) throw new Error('no active tab');
       const response = await chrome.tabs.sendMessage(activeTabId, { type: Config.MSG.GET_STATS });
       tabReachable = Boolean(response);
@@ -1057,9 +1170,9 @@
       els.importFile.value = '';
       if (file) readImportFile(file);
     });
-    els.keywordsImportMerge.addEventListener('click', () => applyKeywordImport(false).catch(reportFailure));
-    els.keywordsImportReplace.addEventListener('click', () => applyKeywordImport(true).catch(reportFailure));
-    els.keywordsImportCancel.addEventListener('click', cancelImport);
+    els.listImportMerge.addEventListener('click', () => applyListImport(false).catch(reportFailure));
+    els.listImportReplace.addEventListener('click', () => applyListImport(true).catch(reportFailure));
+    els.listImportCancel.addEventListener('click', cancelImport);
     els.settingsImportApply.addEventListener('click', () => applySettingsImport().catch(reportFailure));
     els.settingsImportCancel.addEventListener('click', cancelImport);
 
@@ -1100,6 +1213,13 @@
     els.enabled.addEventListener('change', () => {
       chrome.storage.local.set({ enabled: els.enabled.checked });
     });
+    els.siteForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      addSite(els.siteInput.value, false).catch(reportSiteError);
+    });
+    els.excludeCurrentSite.addEventListener('click', () => addSite(activeSite, true).catch(reportSiteError));
+    els.sitesExport.addEventListener('click', exportSites);
+    els.sitesImport.addEventListener('click', () => openImportWindow('sites'));
     els.keywordForm.addEventListener('submit', addKeywords);
     els.restoreDefaults.addEventListener('click', restoreDefaults);
     els.keywordsExport.addEventListener('click', exportKeywords);
@@ -1191,7 +1311,7 @@
       } else {
         render();
       }
-      if (keys.includes('enabled')) setTimeout(refreshStats, 400);
+      if (keys.includes('enabled') || keys.includes('excludedSites')) setTimeout(refreshStats, 400);
       if (keys.some((key) => ['aiProtocol', 'aiModel', 'aiEnabled', 'enabled'].includes(key))) {
         if (keys.includes('aiModel') || keys.includes('aiProtocol')) {
           // Another model: do not show the previous one's state while the new one is asked for.

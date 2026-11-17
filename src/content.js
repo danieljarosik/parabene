@@ -1237,15 +1237,15 @@
     if (previous && previous.language !== settings.language) updateLanguage(settings.language);
     // Requests still queued by the old evaluator are dropped — nothing is sent with old settings.
     if (state.evaluator) state.evaluator.cancel();
-    state.evaluator = buildEvaluator(settings);
-    applyImageSettings(settings);
-    applyLearningSettings(settings);
-    if (!settings.enabled) {
-      state.enabled = false;
+    state.enabled = settings.enabled && !Config.isSiteExcluded(settings.excludedSites, location.hostname);
+    state.evaluator = state.enabled ? buildEvaluator(settings) : null;
+    const effective = { ...settings, enabled: state.enabled };
+    applyImageSettings(effective);
+    applyLearningSettings(effective);
+    if (!state.enabled) {
       stop();
       return;
     }
-    state.enabled = true;
     // Re-evaluate everything without revealing first — elements that no longer
     // match get unhidden and new matches get hidden (no flicker).
     resetChecks();
@@ -1358,12 +1358,14 @@
       next[key] = value === undefined ? Config.DEFAULT_SETTINGS[key] : value;
     }
     const sanitized = Config.sanitize(next);
-    if (keys.every((key) => key === 'language' || key === 'logEnabled')) {
-      // A UI language switch only changes the bar texts and the log switch only affects
-      // future hides — no need to re-scan the page.
+    const exclusionChanged = Config.isSiteExcluded(sanitized.excludedSites, location.hostname) !==
+      Config.isSiteExcluded(state.settings.excludedSites, location.hostname);
+    // Keep settings received during startup. Exclusions for other hosts need no re-scan here.
+    const rescan = exclusionChanged || keys.some((key) => key !== 'language' && key !== 'logEnabled' && key !== 'excludedSites');
+    if (!state.i18n || !rescan) {
       const changed = sanitized.language !== state.settings.language;
       state.settings = sanitized;
-      if (changed) updateLanguage(sanitized.language);
+      if (changed && state.i18n) updateLanguage(sanitized.language);
       return;
     }
     applySettings(sanitized);
@@ -1371,9 +1373,11 @@
 
   Config.load()
     .then(async (settings) => {
-      state.i18n = await loadTranslator(settings.language);
-      await loadLearned();
-      applySettings(settings);
+      state.settings = settings;
+      const [translator] = await Promise.all([loadTranslator(settings.language), loadLearned()]);
+      state.i18n = translator;
+      if (settings.language !== state.settings.language) updateLanguage(state.settings.language);
+      applySettings(state.settings);
     })
     .catch((err) => console.warn('[ParaBene] Failed to load settings:', err));
 })();

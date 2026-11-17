@@ -63,12 +63,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string') return false;
 
   if (message.type === Config.MSG.CLASSIFY) {
-    classify(message.text, message.test === true).then(sendResponse);
+    classify(message.text, message.test === true, sender.url).then(sendResponse);
     return true;
   }
 
   if (message.type === Config.MSG.CLASSIFY_IMAGE && typeof message.url === 'string') {
-    classifyImage(message.url).then(sendResponse);
+    classifyImage(message.url, sender.url).then(sendResponse);
     return true;
   }
 
@@ -170,11 +170,13 @@ async function getMessages(locale) {
  * Requests still queued in a tab when the filter or the model was switched off are refused
  * ("cancelled"), so no text is sent after that; the panel's connection test (`test`) is always sent.
  */
-async function classify(text, test = false) {
+async function classify(text, test, pageUrl) {
   let endpoint = '';
   try {
-    const { enabled, aiEnabled, aiEndpoint, aiProtocol, aiModel, aiSensitivity, aiTopics } = await Config.load();
-    if (!test && !(enabled && aiEnabled)) throw Evaluators.cancelledError();
+    const { enabled, excludedSites, aiEnabled, aiEndpoint, aiProtocol, aiModel, aiSensitivity, aiTopics } = await Config.load();
+    if (!test && (!enabled || !aiEnabled || Config.isSiteExcluded(excludedSites, Config.siteHost(pageUrl)))) {
+      throw Evaluators.cancelledError();
+    }
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
     if (aiProtocol === 'builtin') {
       // Without the chosen model's file nothing is asked and nothing is downloaded: the user downloads it in the panel.
@@ -548,19 +550,27 @@ function imageTooLargeError() {
   return Evaluators.codedError('imageFetch', `image larger than ${Config.IMAGE_MAX_BYTES} B`);
 }
 
+function canClassifyImage(settings, hosts) {
+  return settings.enabled && settings.aiImagesEnabled &&
+    [...hosts].some((host) => !Config.isSiteExcluded(settings.excludedSites, host));
+}
+
 /**
  * Judges the picture at `url` (http(s) or data:). Errors with the codes imageFetch, imageDecode,
  * imageTooSmall and an HTTP 422 concern this picture only; any other error means the server is
  * unavailable (the content script then pauses image evaluation for a while).
  */
-async function classifyImage(url) {
+async function classifyImage(url, pageUrl) {
   let endpoint = '';
   try {
     // The content script sends only such addresses; nothing else is ever fetched from here.
     if (!/^(https?:|data:image\/)/i.test(url)) throw Evaluators.codedError('imageFetch', 'unsupported picture address');
     // An oversized data: picture is refused before it is hashed or decoded.
     if (/^data:/i.test(url) && dataUrlBytes(url) > Config.IMAGE_MAX_BYTES) throw imageTooLargeError();
-    const { aiImagesEndpoint, aiSensitivity, aiTopics } = await Config.load();
+    const host = Config.siteHost(pageUrl);
+    const settings = await Config.load();
+    if (!canClassifyImage(settings, [host])) throw Evaluators.cancelledError();
+    const { aiImagesEndpoint, aiSensitivity, aiTopics } = settings;
     if (!Config.isValidEndpoint(aiImagesEndpoint)) {
       throw Evaluators.codedError('invalidEndpoint', 'invalid image endpoint URL');
     }
@@ -569,13 +579,16 @@ async function classifyImage(url) {
     let reply = imageCache.get(key);
     if (!reply) {
       let request = imageRequests.get(key);
-      if (!request) {
-        request = imageLimiter
+      if (request) {
+        request.hosts.add(host);
+      } else {
+        const hosts = new Set([host]);
+        const pending = imageLimiter
           .run(async () => {
-            // The request may have waited in the queue: no picture is sent once image evaluation is off.
-            const current = await Config.load();
-            if (!(current.enabled && current.aiImagesEnabled)) throw Evaluators.cancelledError();
+            // A shared request can continue while at least one of its sites still uses image evaluation.
+            if (!canClassifyImage(await Config.load(), hosts)) throw Evaluators.cancelledError();
             const image = await loadImage(url);
+            if (!canClassifyImage(await Config.load(), hosts)) throw Evaluators.cancelledError();
             return Evaluators.fetchTransport({
               endpoint,
               body: Evaluators.basalImageRequest(image, aiTopics),
@@ -583,9 +596,10 @@ async function classifyImage(url) {
             });
           })
           .finally(() => imageRequests.delete(key));
+        request = { hosts, pending };
         imageRequests.set(key, request);
       }
-      reply = await request;
+      reply = await request.pending;
       imageCache.set(key, reply);
       if (imageCache.size > IMAGE_CACHE_SIZE) imageCache.delete(imageCache.keys().next().value);
     }

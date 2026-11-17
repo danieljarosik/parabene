@@ -27,7 +27,7 @@
       </header>
 
       <!--
-        The import window (popup.html?import=keywords|settings) shows only this card: the toolbar
+        The import window (popup.html?import=keywords|sites|settings) shows only this card: the toolbar
         popup closes while a file is being chosen, so an import runs in a small window of its own.
       -->
       <section class="card import-window" id="import-window" hidden>
@@ -41,12 +41,12 @@
         </div>
         <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" hidden />
         <p class="hint" id="import-status" role="status"></p>
-        <div class="import" id="keywords-import-panel" role="group" data-i18n-aria-label="keywordsImport" hidden>
-          <p class="import__summary" id="keywords-import-summary"></p>
+        <div class="import" id="list-import-panel" role="group" aria-labelledby="import-title" hidden>
+          <p class="import__summary" id="list-import-summary"></p>
           <div class="import__buttons">
-            <button type="button" class="btn btn--primary" id="keywords-import-merge" data-i18n="keywordsImportMerge"></button>
-            <button type="button" class="btn" id="keywords-import-replace" data-i18n="keywordsImportReplace"></button>
-            <button type="button" class="link" id="keywords-import-cancel" data-i18n="importCancel"></button>
+            <button type="button" class="btn btn--primary" id="list-import-merge" data-i18n="keywordsImportMerge"></button>
+            <button type="button" class="btn" id="list-import-replace" data-i18n="keywordsImportReplace"></button>
+            <button type="button" class="link" id="list-import-cancel" data-i18n="importCancel"></button>
           </div>
         </div>
         <div class="import" id="settings-import-panel" role="group" data-i18n-aria-label="settingsImport" hidden>
@@ -70,6 +70,28 @@
             <span class="source source--ai"><span data-i18n="sourceAiText"></span> <b id="stat-ai-text">0</b></span>
             <span class="source source--image"><span data-i18n="sourceAiImage"></span> <b id="stat-ai-image">0</b></span>
             <span class="source source--learned" id="stat-passed-item" hidden><span data-i18n="sourcePassed"></span> <b id="stat-passed">0</b></span>
+          </span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h2 id="sites-title" data-i18n="sitesTitle"></h2>
+          <span class="count" id="site-count">0</span>
+        </div>
+        <form class="row" id="site-form" autocomplete="off">
+          <input type="text" id="site-input" class="input" spellcheck="false" inputmode="url"
+            data-i18n-placeholder="sitePlaceholder" data-i18n-aria-label="siteInputLabel" />
+          <button type="submit" class="btn btn--primary" data-i18n="keywordAdd"></button>
+        </form>
+        <p class="hint" id="site-feedback" role="status" data-i18n="sitesHint"></p>
+        <ul class="chips" id="site-list" aria-labelledby="sites-title"></ul>
+        <p class="empty" id="site-empty" data-i18n="sitesEmpty" hidden></p>
+        <div class="card__actions">
+          <button type="button" class="link" id="exclude-current-site" data-i18n="excludeCurrentSite" hidden></button>
+          <span class="card__actions-group">
+            <button type="button" class="link" id="sites-export" data-i18n="keywordsExport"></button>
+            <button type="button" class="link" id="sites-import" data-i18n="keywordsImport"></button>
           </span>
         </div>
       </section>

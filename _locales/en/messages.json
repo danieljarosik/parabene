@@ -1296,7 +1296,7 @@
     }
   },
   "settingsImportContents": {
-    "message": "Settings: $settings$ · phrases: $keywords$ · learned examples: $learned$.",
+    "message": "Settings: $settings$ · phrases: $keywords$ · excluded sites: $sites$ · learned examples: $learned$.",
     "description": "What a settings backup contains.",
     "placeholders": {
       "settings": {
@@ -1307,14 +1307,18 @@
         "content": "$2",
         "example": "42"
       },
-      "learned": {
+      "sites": {
         "content": "$3",
+        "example": "3"
+      },
+      "learned": {
+        "content": "$4",
         "example": "7"
       }
     }
   },
   "settingsImportNote": {
-    "message": "Restoring replaces the current settings and phrase list; learned examples are added to the current ones.",
+    "message": "Restoring replaces the settings and lists included in the backup. Learned examples are added to the current ones.",
     "description": "Explains what restoring a backup does."
   },
   "settingsImportApply": {
@@ -1436,5 +1440,121 @@
         "example": "2"
       }
     }
+  },
+  "importWarn_sitesSkipped": {
+    "message": "Sites skipped as invalid: $count$.",
+    "description": "Import warning: some excluded sites in the backup were rejected.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "sitesTitle": {
+    "message": "Excluded sites"
+  },
+  "sitePlaceholder": {
+    "message": "e.g. example.com"
+  },
+  "siteInputLabel": {
+    "message": "Site domain or URL"
+  },
+  "sitesHint": {
+    "message": "Enter a domain or HTTP(S) URL. The exclusion also covers subdomains."
+  },
+  "sitesEmpty": {
+    "message": "The excluded sites list is empty."
+  },
+  "excludeCurrentSite": {
+    "message": "Turn off on this site"
+  },
+  "statSiteExcluded": {
+    "message": "Filtering is off on this site"
+  },
+  "removeSiteTitle": {
+    "message": "Remove from excluded sites"
+  },
+  "removeSiteLabel": {
+    "message": "Remove $site$ from excluded sites",
+    "placeholders": {
+      "site": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "siteInvalid": {
+    "message": "Enter a valid domain or HTTP(S) URL."
+  },
+  "siteDuplicate": {
+    "message": "$site$ is already excluded.",
+    "placeholders": {
+      "site": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "siteAdded": {
+    "message": "Excluded $site$.",
+    "placeholders": {
+      "site": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "sitesSaveFailed": {
+    "message": "Could not save the excluded sites list."
+  },
+  "sitesFileHint": {
+    "message": "One domain or HTTP(S) URL per line. Lines starting with # are ignored."
+  },
+  "sitesExported": {
+    "message": "Exported the excluded sites list."
+  },
+  "importTitle_sites": {
+    "message": "Import excluded sites"
+  },
+  "importDesc_sites": {
+    "message": "Choose a text file with sites or a ParaBene settings backup."
+  },
+  "sitesImportSummary": {
+    "message": "Sites in file: $total$. New entries: $fresh$.",
+    "placeholders": {
+      "total": {
+        "content": "$1",
+        "example": "5"
+      },
+      "fresh": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "sitesSkipped": {
+    "message": "Invalid entries skipped: $count$.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "sitesImportFromSettings": {
+    "message": "The sites come from a settings backup."
+  },
+  "sitesImported": {
+    "message": "Saved the excluded sites list."
+  },
+  "sitesImportNothingNew": {
+    "message": "The file contains no new sites."
+  },
+  "importError_noSites": {
+    "message": "The file contains no valid sites."
+  },
+  "importError_sitesFile": {
+    "message": "This is an excluded sites list. Import it in the Excluded sites section."
   }
 }

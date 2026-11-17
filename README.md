@@ -44,8 +44,9 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 
 | Element | What it does |
 | --- | --- |
-| **ON/OFF** switch | Instantly enables or disables the filter in all tabs. When disabled, hidden content comes back. |
+| **ON/OFF** switch | Enables or disables filtering globally. When disabled, hidden content comes back. |
 | **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI model is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. With learning on, **Let through (learned)** (*Przepuszczone (nauka)*) counts content let through by learned examples. |
+| **Excluded sites** (*Wykluczone witryny*) | Enter a domain or HTTP(S) URL, or click **Turn off on this site** (*Wyłącz na tej witrynie*). An entry covers the hostname and its subdomains, across all paths and ports. Adding a site immediately restores hidden content in matching tabs. Remove an entry with `×` to resume filtering wherever no other exclusion applies and the main switch is on. See [Excluded site files](#excluded-site-files). |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
 | **Export to file** / **Import from file…** (*Eksportuj do pliku* / *Importuj z pliku…*) | Saves your phrases to a text file you can edit, and reads such a file back: **Add new ones** (*Dodaj nowe*) or **Replace the list** (*Zastąp listę*). See [Backup and keyword files](#backup-and-keyword-files). |
@@ -53,7 +54,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
-| **Backup** (*Kopia zapasowa*) | **Export settings** (*Eksportuj ustawienia*) saves every setting, the phrases and the learned examples to one file; **Import settings…** (*Importuj ustawienia…*) restores it after a summary and warnings. See [Backup and keyword files](#backup-and-keyword-files). |
+| **Backup** (*Kopia zapasowa*) | **Export settings** (*Eksportuj ustawienia*) saves every setting, the phrases, the excluded sites and the learned examples to one file; **Import settings…** (*Importuj ustawienia…*) restores it after a summary and warnings. See [Backup and keyword files](#backup-and-keyword-files). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -78,7 +79,7 @@ On first run, a default list of Polish phrases is loaded (accidents, death, viol
 
 **News portals and other sites** — `<article>` / `role="article"` elements and tiles built around an `h1`–`h3` heading with a link (the algorithm climbs from the heading to the largest ancestor that is still a single tile). Safeguards reject `body`, `main`, the feed, navigation, the page header and footer, as well as containers holding many articles or too much text, so the whole page never gets hidden.
 
-**Dynamically loaded content** (infinite scroll) is handled by a `MutationObserver` with a 200 ms debounce (and a 1 s maximum wait under a continuous stream of changes). Checked nodes get the `data-parabene-checked="true"` attribute. If their text changes (e.g. Facebook first renders an empty post skeleton) or part of it is removed, they are evaluated again; a picture added to a post whose text did not change is judged too (with image evaluation on). Text split by inline formatting (`<strong>wypa</strong>dek`) is read as one word. **Show anyway** applies to the content you revealed: if the page reuses the element for different content, it is filtered again (small changes such as reaction counters or "See more" keep it revealed). Turning the filter or the AI model off drops the requests still waiting in the queue — no text or picture is sent after that.
+**Dynamically loaded content** (infinite scroll) is handled by a `MutationObserver` with a 200 ms debounce (and a 1 s maximum wait under a continuous stream of changes). Checked nodes get the `data-parabene-checked="true"` attribute. If their text changes (e.g. Facebook first renders an empty post skeleton) or part of it is removed, they are evaluated again; a picture added to a post whose text did not change is judged too (with image evaluation on). Text split by inline formatting (`<strong>wypa</strong>dek`) is read as one word. **Show anyway** applies to the content you revealed: if the page reuses the element for different content, it is filtered again (small changes such as reaction counters or "See more" keep it revealed). Turning the filter or the AI model off, or excluding the site, drops the requests still waiting in the queue — no text or picture is sent after that.
 
 **Hiding** never uses `.remove()` — that would break infinite scroll and page scripts. The container gets the `parabene-hidden` class, and CSS hides its children and shows the placeholder bar inserted as the first child. Revealed content (and content let through by a learned example) keeps the bar above it under the `parabene-shown` class; when the container lays its children out in a horizontal flex row (a Facebook comment: avatar beside the text), it also gets `data-parabene-row` and the bar leaves the row: CSS places it in room added at the top of the container (a `ResizeObserver` keeps that room as tall as the bar), so the content keeps its row layout below the bar — the row neither wraps nor shrinks, whatever the flex sizes of its items.
 
@@ -99,7 +100,7 @@ parabene/
 │   ├── i18n.js            translation loader/formatter (placeholders, plural forms, DOM localization)
 │   ├── evaluators.js      ContentEvaluator, KeywordEvaluator, LocalAIEvaluator, FallbackEvaluator
 │   ├── learning.js        similarity of texts for learning from revealed content
-│   ├── backup.js          keyword files and the settings backup: formats, checks, migrations
+│   ├── backup.js          keyword files, excluded site files and settings backups
 │   ├── content.js         MutationObserver, container heuristics, hiding/restoring, "Hide" bars
 │   ├── content.css        styles for hidden blocks and the placeholder bar
 │   └── background.js      service worker: default settings, local AI proxy (text and pictures), the built-in model's offscreen document, icon badge counter, log, learned examples, translations for content scripts
@@ -148,6 +149,7 @@ All settings live in `chrome.storage.local`:
 {
   "enabled": true,
   "keywords": ["wypadek", "śmierć", "..."],
+  "excludedSites": [],
   "aiEnabled": false,
   "aiEndpoint": "http://localhost:8000/classify",
   "aiProtocol": "simple",
@@ -626,8 +628,22 @@ its phrases), shows how many phrases are new, and then either **Add new ones** (
 ones are skipped and counted. A file without a single valid phrase is rejected, so the list is never
 replaced with an empty one; for the same reason an empty list cannot be exported.
 
+### Excluded site files
+
+Under **Excluded sites** (*Wykluczone witryny*), **Export to file** (*Eksportuj do pliku*) saves
+`parabene-sites-YYYYMMDD-HHMM.txt` with one hostname per line. You can edit the file using
+hostnames or HTTP(S) URLs. Lines beginning with `#` are comments.
+
+**Import from file…** (*Importuj z pliku…*) accepts the text file, a JSON array of site addresses,
+or the site list from a settings backup. Review the totals and any skipped entries, then choose
+**Add new ones** (*Dodaj nowe*) or **Replace the list** (*Zastąp listę*). A list with no valid
+sites is rejected.
+
+### Full settings backups
+
 **Backup** (*Kopia zapasowa*) → **Export settings** (*Eksportuj ustawienia*) saves
-`parabene-settings-YYYYMMDD-HHMM.json` with every setting, the phrases and the learned examples
+`parabene-settings-YYYYMMDD-HHMM.json` with every setting, including the phrases and excluded
+sites, and the learned examples
 (their texts included, so keep the file private). The log of hidden content and the built-in
 model's file are not part of it.
 
@@ -638,14 +654,14 @@ model's file are not part of it.
   "extension": "ParaBene",
   "extensionVersion": "1.0.0",
   "exportedAt": "2026-11-17T13:30:00.000Z",
-  "settings": { "enabled": true, "keywords": ["wypadek", "..."], "aiEnabled": false, "...": "..." },
+  "settings": { "enabled": true, "keywords": ["wypadek", "..."], "excludedSites": ["example.com"], "aiEnabled": false, "...": "..." },
   "learned": [{ "id": "…", "time": "…", "source": "keyword", "reason": "wypadek", "text": "…" }]
 }
 ```
 
 **Import settings…** (*Importuj ustawienia…*) shows when and by which version the file was made,
-what it contains and any warnings, and applies it only after **Restore** (*Przywróć*). Settings
-and phrases are replaced; learned examples are added to the current ones (an example with the
+what it contains and any warnings, and applies it only after **Restore** (*Przywróć*). Settings,
+phrases and excluded sites are replaced; learned examples are added to the current ones (an example with the
 same id, or the same reason and text, is replaced — also between examples of the file, where the
 later one wins; the newest 300 are kept). The message counts only the examples actually kept and
 says how many were left out as older than the newest 300 or skipped as invalid (e.g. without text).
@@ -711,7 +727,7 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 ## Privacy
 
 - No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face, which starts when you click **Download model** for the [built-in model](#built-in-model-no-server); it carries no page content.
-- Settings are stored only in `chrome.storage.local`. They leave it only as a [backup or keywords file](#backup-and-keyword-files) you save yourself.
+- Settings are stored only in `chrome.storage.local`. They leave it only as a [backup or list file](#backup-and-keyword-files) you save yourself.
 - Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
 - The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
 - With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.

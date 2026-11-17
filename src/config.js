@@ -229,6 +229,7 @@
   const DEFAULT_SETTINGS = Object.freeze({
     enabled: true,
     keywords: DEFAULT_KEYWORDS,
+    excludedSites: Object.freeze([]),
     aiEnabled: false,
     aiEndpoint: DEFAULT_ENDPOINT,
     aiProtocol: DEFAULT_PROTOCOL,
@@ -304,6 +305,46 @@
       out.push(keyword);
     }
     return out;
+  }
+
+  /** Keeps the hostname of an HTTP(S) address or a bare host, normalised by the URL parser. */
+  function normalizeSite(value) {
+    if (typeof value !== 'string') return '';
+    const input = value.trim();
+    if (!input || /[\s\\]/.test(input)) return '';
+    const address = /^https?:\/\/[^/?#]/i.test(input);
+    const authority = address ? input.slice(input.indexOf('://') + 3).split(/[/?#]/, 1)[0] : input;
+    if (/[/?#@]/.test(authority)) return '';
+    try {
+      const url = new URL(address ? input : `https://${input}`);
+      if (url.username || url.password) return '';
+      const host = url.hostname.replace(/\.$/, '');
+      if (host.startsWith('[')) return host; // The URL parser already checked the IPv6 address.
+      // Underscores are not valid in DNS hostnames, but browsers open such hosts (news_room.example.com).
+      const label = /^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$/;
+      return host.length <= 253 && host.split('.').every((part) => label.test(part)) ? host : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /**
+   * Hostname of a page address reported by the browser (tab or sender URL), as the content script
+   * sees it in location.hostname; '' for anything other than HTTP(S).
+   */
+  function siteHost(url) {
+    try {
+      const parsed = new URL(String(url));
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+      return parsed.hostname.toLowerCase().replace(/\.$/, '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function isSiteExcluded(sites, hostname) {
+    const host = hostname.toLowerCase().replace(/\.$/, '');
+    return sites.some((site) => host === site || host.endsWith(`.${site}`));
   }
 
   function isValidEndpoint(value) {
@@ -444,6 +485,11 @@
     switch (key) {
       case 'keywords':
         return Array.isArray(value) && value.every((item) => typeof item === 'string') ? uniqueKeywords(value) : undefined;
+      case 'excludedSites': {
+        if (!Array.isArray(value)) return undefined;
+        const sites = value.map(normalizeSite);
+        return sites.every(Boolean) ? [...new Set(sites)] : undefined;
+      }
       case 'aiEndpoint':
       case 'aiImagesEndpoint':
         return typeof value === 'string' && isValidEndpoint(value.trim()) ? value.trim() : undefined;
@@ -473,6 +519,7 @@
     return {
       enabled: s.enabled !== false,
       keywords: uniqueKeywords(Array.isArray(s.keywords) ? s.keywords : DEFAULT_KEYWORDS),
+      excludedSites: Array.isArray(s.excludedSites) ? [...new Set(s.excludedSites.map(normalizeSite).filter(Boolean))] : [],
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
       aiProtocol: isSupportedProtocol(s.aiProtocol) ? s.aiProtocol : DEFAULT_PROTOCOL,
@@ -491,19 +538,21 @@
 
   /**
    * Reads settings from chrome.storage.local. Missing keys (e.g. on first run)
-   * are filled in with default values and persisted.
+   * are filled in with default values and persisted. The optional site list stays absent until edited.
    */
   async function load() {
     const keys = Object.keys(DEFAULT_SETTINGS);
     const stored = await chrome.storage.local.get(keys);
     const missing = {};
     for (const key of keys) {
-      if (stored[key] === undefined) missing[key] = DEFAULT_SETTINGS[key];
+      if (stored[key] === undefined && key !== 'excludedSites') missing[key] = DEFAULT_SETTINGS[key];
     }
-    if (Object.keys(missing).length > 0) {
-      await chrome.storage.local.set(JSON.parse(JSON.stringify(missing)));
-    }
-    return sanitize(Object.assign({}, stored, missing));
+    if (Object.keys(missing).length === 0) return sanitize(stored);
+    await chrome.storage.local.set(JSON.parse(JSON.stringify(missing)));
+    // Read again: a change saved while the defaults were being written (e.g. a site excluded in the
+    // panel) has already been announced, before the caller could listen for it.
+    const fresh = await chrome.storage.local.get(keys);
+    return sanitize(Object.assign({}, missing, fresh));
   }
 
   /**
@@ -558,6 +607,9 @@
     DEFAULT_LANGUAGE,
     DEFAULT_KEYWORDS,
     DEFAULT_SETTINGS,
+    normalizeSite,
+    siteHost,
+    isSiteExcluded,
     PROFANITY,
     MSG,
     LOG_STORAGE_KEY,
