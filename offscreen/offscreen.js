@@ -51,12 +51,13 @@ async function loadModel() {
   const quiet = () => {};
   const instance = new Wllama(
     { default: chrome.runtime.getURL('vendor/wllama/wasm/wllama.wasm') },
-    // allowOffline: a model that is already stored is loaded without asking the server about it
-    { logger: { debug: quiet, log: quiet, warn: console.warn, error: console.error }, allowOffline: true }
+    { logger: { debug: quiet, log: quiet, warn: console.warn, error: console.error } }
   );
   // No compatibility mode: in a browser without JSPI or 64-bit WebAssembly memory wllama would
   // otherwise download a second build of itself from a CDN and run it. Loading then fails instead.
   instance.setCompat(null);
+  // A model stored complete in the extension's storage is loaded from there without any request
+  // (wllama's ModelManager.getModelOrDownload); an interrupted download starts again from the beginning.
   await instance.loadModelFromUrl(Config.BUILTIN_MODEL_URL, {
     n_ctx: Config.BUILTIN_CONTEXT,
     n_threads: 1, // the GPU does the work: measured, more threads do not make a decision faster

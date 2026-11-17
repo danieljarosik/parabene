@@ -45,10 +45,10 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | Element | What it does |
 | --- | --- |
 | **ON/OFF** switch | Instantly enables or disables the filter in all tabs. When disabled, hidden content comes back. |
-| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI server is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. With learning on, **Let through (learned)** (*Przepuszczone (nauka)*) counts content let through by learned examples. |
+| **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI model is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. With learning on, **Let through (learned)** (*Przepuszczone (nauka)*) counts content let through by learned examples. |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
-| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local classification server. **Request format** (*Format zapytań*) picks ParaBene's simple contract, [basal-serve](#basal-serve-v1basal) or the [built-in model](#built-in-model-no-server) (*Wbudowany model*), which needs no server; the address field and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
+| **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local AI model: a classification server you run or the built-in model. **Request format** (*Format zapytań*) picks ParaBene's simple contract, [basal-serve](#basal-serve-v1basal) or the [built-in model](#built-in-model-no-server) (*Wbudowany model*), which needs no server; the address field (hidden for the built-in model) and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve or the built-in model you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
@@ -131,13 +131,13 @@ class ContentEvaluator {
 | --- | --- |
 | `KeywordEvaluator` | Fast local keyword matching (a single compiled regular expression with the `u` flag). |
 | `LocalAIEvaluator` | Sends a `POST` to the local endpoint. Limits concurrent requests (3), caches results and caps text length (2000 characters). When a request fails, the ones still queued fail with it, so a server that hangs is not asked again for each of them. `cancel()` drops the queued requests when the settings change. |
-| `FallbackEvaluator` | Tries the AI model. On error (no server, timeout, invalid response) it falls back to `KeywordEvaluator` and skips the failing server for 30 s. |
+| `FallbackEvaluator` | Tries the AI model. On error (no server, the built-in model still loading, timeout, invalid response) it falls back to `KeywordEvaluator` and skips the failing model for 30 s. |
 | `FirstHitEvaluator` | Asks evaluators in order and stops at the first one that hides the text. Used by the default *Keywords + AI* mode: a keyword match hides at once, without a request to the model. |
 
 **Keywords and AI model** (`aiMode`):
 
 - `both` (default, *Frazy + AI*) — your keywords still work with the model on: a match hides the text at once; everything else goes to the model. Profanity and your own phrases are never missed because the model was not asked about them.
-- `ai` (*Tylko AI*) — the model decides alone; keywords are used only while the server is unavailable.
+- `ai` (*Tylko AI*) — the model decides alone; keywords are used only while the model is unavailable.
 
 All settings live in `chrome.storage.local`:
 
@@ -417,6 +417,7 @@ stateDiagram-v2
 ```
 
 - **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings change.
+- **Only as the settings say.** With the filter or the AI model off, **Test** (*Testuj*) does not open the document: it says the built-in model runs only while they are on (`builtinOff`) instead of starting the download. A document opened by a request just as the settings were switched off is closed again at once.
 - **First use.** *Loading* is then a download of 1.17 GB from Hugging Face (a pinned revision) into the extension's own storage; it took 76–83 s. Meanwhile **Test** (*Testuj*) shows the progress and pages are filtered by keywords.
 - **Later starts** read the file from that storage, without a request to the server. The document opens 0.5 s after the browser starts and the model is ready after 1.0–2.3 s; the first decision or two take 1.4–1.6 s while the weights are read.
 - **No time limit.** The document stays open as long as the settings ask for it. In a test the service worker was stopped after 34 s without events, and the same document, with the model in memory, was still open when the test ended after 150 s.
@@ -473,6 +474,8 @@ In Brave 156 without a window, driven over the DevTools protocol, with the exten
 - **Scores differ from basal-serve's.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
 - **Diluted texts.** A sentence about an accident followed by a long neutral text is judged neutral. basal-serve does the same.
 - **Download progress** is shown only after a click on **Test** (*Testuj*).
+- **Disk space.** The model file (1.17 GB) stays in the extension's storage when you switch to another request format, so switching back does not download it again. It is deleted together with the extension; the panel has no button to delete it alone.
+- **An interrupted download** (the AI model switched off, the browser closed) is not resumed: the next one starts from the beginning.
 
 `vendor/wllama/` is written by `python3 tools/vendor_wllama.py`, which downloads the pinned npm package, checks its SHA-512 and copies the library, its WebAssembly binary and its licence unchanged.
 

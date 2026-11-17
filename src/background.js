@@ -145,6 +145,10 @@ async function classify(text, test = false) {
     if (!test && !(enabled && aiEnabled)) throw Evaluators.cancelledError();
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
     if (aiProtocol === 'builtin') {
+      // The model is loaded only while the settings ask for it (syncBuiltin): a test with the filter
+      // or the AI model off would start the download, and the next start of the service worker
+      // would close the document again.
+      if (!(enabled && aiEnabled)) throw Evaluators.codedError('builtinOff', 'the built-in model is off');
       const reply = await builtinTransport(Evaluators.basalRequest(input, aiTopics));
       const threshold = Config.AI_SENSITIVITIES[aiSensitivity];
       const data = Evaluators.parseBasalResponse(reply, { threshold, topics: aiTopics });
@@ -195,21 +199,33 @@ async function hasBuiltinDocument() {
   return contexts.length > 0;
 }
 
+/** Opens the document unless it is open; resolves (once the page has loaded) with true when this call opened it. */
 async function openBuiltin() {
-  if (builtinOpening) return builtinOpening; // resolves once the page has loaded
-  if (await hasBuiltinDocument()) return;
   if (!builtinOpening) {
-    builtinOpening = chrome.offscreen
-      .createDocument({
-        url: Config.BUILTIN_PAGE,
-        reasons: ['WORKERS'],
-        justification: 'Runs the local AI model that classifies page text (WebAssembly and WebGPU in a worker).',
-      })
-      .finally(() => {
-        builtinOpening = null;
-      });
+    if (await hasBuiltinDocument()) return false;
+    if (!builtinOpening) {
+      builtinOpening = chrome.offscreen
+        .createDocument({
+          url: Config.BUILTIN_PAGE,
+          reasons: ['WORKERS'],
+          justification: 'Runs the local AI model that classifies page text (WebAssembly and WebGPU in a worker).',
+        })
+        .then(
+          () => true,
+          async (err) => {
+            // Only one offscreen document may exist: another call may have opened it meanwhile.
+            if (await hasBuiltinDocument()) return false;
+            throw err;
+          }
+        )
+        .finally(() => {
+          builtinOpening = null;
+        });
+      return builtinOpening;
+    }
   }
   await builtinOpening;
+  return false;
 }
 
 /**
@@ -257,7 +273,10 @@ syncBuiltin(); // every start of the service worker, including install and reloa
 
 /** Asks the model in the offscreen document; resolves with its basal reply. */
 async function builtinTransport(body) {
-  await openBuiltin();
+  // Normally syncBuiltin has opened the document. One opened here (the service worker has just
+  // started, or the settings were switched off after this request was checked) is checked
+  // against the settings again, so it is not left open when they no longer ask for it.
+  if (await openBuiltin()) syncBuiltin();
   const timeoutMs = Config.BUILTIN_TIMEOUT_MS;
   let timer;
   const timeout = new Promise((_, reject) => {

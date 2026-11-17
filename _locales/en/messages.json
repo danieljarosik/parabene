@@ -262,7 +262,7 @@
     "description": "Name of the local AI engine."
   },
   "engineAiDesc": {
-    "message": "Sends text only to your own local server.",
+    "message": "Text goes only to your own local server or to the built-in model in the browser.",
     "description": "Description of the local AI engine."
   },
   "engineAiToggleLabel": {
@@ -401,6 +401,10 @@
     "message": "this browser provides no WebGPU (graphics card)",
     "description": "Built-in model error: the browser has no usable GPU adapter."
   },
+  "aiError_builtinOff": {
+    "message": "the built-in model runs only while the filter and the local AI model are on",
+    "description": "Built-in model error: the connection test was run with the filter or the AI model off, so the model is not loaded."
+  },
   "aiError_modelFailed": {
     "message": "the model failed to start: $detail$",
     "description": "Built-in model error: loading the model or a decision failed.",
@@ -450,12 +454,12 @@
     "description": "Mode option: a keyword match hides at once, other texts are checked by the AI model."
   },
   "aiMode_ai": {
-    "message": "AI only (keywords only while the server is down)",
+    "message": "AI only (keywords only while the model is unavailable)",
     "description": "Mode option: the AI model decides alone; keywords are used only as a fallback."
   },
   "aiSensitivityLabel": {
-    "message": "Sensitivity (basal-serve)",
-    "description": "Label of the basal-serve sensitivity picker (hide threshold)."
+    "message": "Sensitivity (basal)",
+    "description": "Label of the sensitivity picker (hide threshold) of the basal models: basal-serve, the built-in model and image evaluation (basal is a model name, not translated)."
   },
   "aiSensitivity_low": {
     "message": "Low — hides only clear cases",
@@ -470,7 +474,7 @@
     "description": "Sensitivity option: hide threshold 0.3."
   },
   "aiTopicsLabel": {
-    "message": "Hidden topics (basal-serve)",
+    "message": "Hidden topics (basal)",
     "description": "Legend of the topic checkboxes; each checkbox uses a category_* message."
   },
   "aiTopicsEmpty": {

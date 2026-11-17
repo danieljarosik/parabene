@@ -51,7 +51,7 @@
   /**
    * How keywords and the AI model work together:
    * - both: a keyword match hides at once (no request); otherwise the model decides,
-   * - ai:   the model decides alone; keywords are used only while the server is unavailable.
+   * - ai:   the model decides alone; keywords are used only while the model is unavailable.
    */
   const AI_MODES = Object.freeze(['both', 'ai']);
   const DEFAULT_AI_MODE = 'both';

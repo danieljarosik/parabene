@@ -262,7 +262,7 @@
     "description": "Name of the local AI engine."
   },
   "engineAiDesc": {
-    "message": "Wysyła tekst wyłącznie na Twój lokalny serwer.",
+    "message": "Tekst trafia wyłącznie na Twój lokalny serwer albo do wbudowanego modelu w przeglądarce.",
     "description": "Description of the local AI engine."
   },
   "engineAiToggleLabel": {
@@ -401,6 +401,10 @@
     "message": "ta przeglądarka nie udostępnia WebGPU (karty graficznej)",
     "description": "Built-in model error: the browser has no usable GPU adapter."
   },
+  "aiError_builtinOff": {
+    "message": "wbudowany model działa tylko przy włączonym filtrze i lokalnym modelu AI",
+    "description": "Built-in model error: the connection test was run with the filter or the AI model off, so the model is not loaded."
+  },
   "aiError_modelFailed": {
     "message": "nie udało się uruchomić modelu: $detail$",
     "description": "Built-in model error: loading the model or a decision failed.",
@@ -450,12 +454,12 @@
     "description": "Mode option: a keyword match hides at once, other texts are checked by the AI model."
   },
   "aiMode_ai": {
-    "message": "Tylko AI (frazy tylko, gdy serwer nie odpowiada)",
+    "message": "Tylko AI (frazy tylko, gdy model nie odpowiada)",
     "description": "Mode option: the AI model decides alone; keywords are used only as a fallback."
   },
   "aiSensitivityLabel": {
-    "message": "Czułość (basal-serve)",
-    "description": "Label of the basal-serve sensitivity picker (hide threshold)."
+    "message": "Czułość (basal)",
+    "description": "Label of the sensitivity picker (hide threshold) of the basal models: basal-serve, the built-in model and image evaluation (basal is a model name, not translated)."
   },
   "aiSensitivity_low": {
     "message": "Niska — ukrywa tylko oczywiste przypadki",
@@ -470,7 +474,7 @@
     "description": "Sensitivity option: hide threshold 0.3."
   },
   "aiTopicsLabel": {
-    "message": "Ukrywane tematy (basal-serve)",
+    "message": "Ukrywane tematy (basal)",
     "description": "Legend of the topic checkboxes; each checkbox uses a category_* message."
   },
   "aiTopicsEmpty": {
