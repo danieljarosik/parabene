@@ -59,7 +59,21 @@
         <p class="hint" id="keyword-feedback" data-i18n="keywordHint"></p>
         <ul class="chips" id="keyword-list" data-i18n-aria-label="keywordListLabel"></ul>
         <p class="empty" id="keyword-empty" data-i18n="keywordEmpty" hidden></p>
-        <button type="button" class="link" id="restore-defaults" data-i18n="restoreDefaults"></button>
+        <div class="card__actions">
+          <button type="button" class="link" id="restore-defaults" data-i18n="restoreDefaults"></button>
+          <span class="card__actions-group">
+            <button type="button" class="link" id="keywords-export" data-i18n="keywordsExport"></button>
+            <button type="button" class="link" id="keywords-import" data-i18n="keywordsImport"></button>
+          </span>
+        </div>
+        <div class="import" id="keywords-import-panel" role="group" data-i18n-aria-label="keywordsImport" hidden>
+          <p class="import__summary" id="keywords-import-summary"></p>
+          <div class="import__buttons">
+            <button type="button" class="btn btn--primary" id="keywords-import-merge" data-i18n="keywordsImportMerge"></button>
+            <button type="button" class="btn" id="keywords-import-replace" data-i18n="keywordsImportReplace"></button>
+            <button type="button" class="link" id="keywords-import-cancel" data-i18n="importCancel"></button>
+          </div>
+        </div>
       </section>
 
       <section class="card">
@@ -225,6 +239,28 @@
         </div>
       </section>
 
+      <section class="card" id="backup-card">
+        <div class="card__head">
+          <h2 data-i18n="backupTitle"></h2>
+        </div>
+        <p class="hint hint--lead" data-i18n="backupDesc"></p>
+        <div class="backup__actions">
+          <button type="button" class="btn" id="settings-export" data-i18n="settingsExport"></button>
+          <button type="button" class="btn" id="settings-import" data-i18n="settingsImport"></button>
+        </div>
+        <p class="hint" id="backup-status" role="status"></p>
+        <div class="import" id="settings-import-panel" role="group" data-i18n-aria-label="settingsImport" hidden>
+          <p class="import__summary" id="settings-import-summary"></p>
+          <ul class="import__warnings" id="settings-import-warnings"></ul>
+          <p class="import__summary" data-i18n="settingsImportNote"></p>
+          <div class="import__buttons">
+            <button type="button" class="btn btn--primary" id="settings-import-apply" data-i18n="settingsImportApply"></button>
+            <button type="button" class="link" id="settings-import-cancel" data-i18n="importCancel"></button>
+          </div>
+        </div>
+        <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" hidden />
+      </section>
+
       <footer class="footer">
         <span id="version">v1.0.0</span>
         <label class="lang">
@@ -241,6 +277,7 @@
 
     <script src="../src/config.js"></script>
     <script src="../src/i18n.js"></script>
+    <script src="../src/backup.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

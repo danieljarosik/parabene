@@ -48,10 +48,12 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Hidden on this page** (*Ukryte na tej stronie*) | Number of collapsed elements in the current tab (also shown as a badge on the extension icon), split into **Keywords** (*Słowa kluczowe*), **AI (text)** (*AI (tekst)*) — the text model — and **AI (picture)** (*AI (grafika)*) — the image model. Content hidden by keywords while the AI model is unavailable counts as keywords. The placeholder bar says the same: *AI – text* (*AI – tekst*) or *AI – picture* (*AI – grafika*) after the reason. With learning on, **Let through (learned)** (*Przepuszczone (nauka)*) counts content let through by learned examples. |
 | **Keywords** (*Słowa kluczowe*) | Add phrases (several at once — separate them with commas) and remove them with a single click on `×`. Changes apply immediately, without reloading the page. |
 | **Restore default phrases** (*Przywróć domyślne frazy*) | Adds missing phrases from the default list (does not remove yours). |
+| **Export to file** / **Import from file…** (*Eksportuj do pliku* / *Importuj z pliku…*) | Saves your phrases to a text file you can edit, and reads such a file back: **Add new ones** (*Dodaj nowe*) or **Replace the list** (*Zastąp listę*). See [Backup and keyword files](#backup-and-keyword-files). |
 | **Local AI model (localhost)** (*Lokalny model AI*) | Switches evaluation to a local AI model: a classification server you run or the built-in model. **Request format** (*Format zapytań*) picks ParaBene's simple contract, [basal-serve](#basal-serve-v1basal) or the [built-in model](#built-in-model-no-server) (*Wbudowany model*), which needs no server; the address field (hidden for the built-in model) and the **Test** (*Testuj*) button check the connection. **Keywords and AI model** (*Frazy i model AI*) sets how the two work together (see below); with basal-serve or the built-in model you also pick the **Sensitivity** (*Czułość*) and the **Hidden topics** (*Ukrywane tematy*). |
 | **Image evaluation (basal-omni)** (*Ocena grafik (basal-omni)*) | Off by default. Judges the pictures of posts and tiles with a multimodal model on a separate basal-serve server (e.g. port 8011), so the fast text model keeps its own. Works with or without the text model, shares its **Sensitivity** and **Hidden topics**; **Test** (*Testuj*) checks that the server takes images. See [Image evaluation](#image-evaluation-basal-omni). |
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of hidden content** (*Dziennik ukrytych treści*) | Off by default. When on, every hidden item is recorded locally with its text, page address and verdict (keywords, AI text model or AI image model); **Download file (.jsonl)** (*Pobierz plik*) exports it for analysis, **Clear log** (*Wyczyść dziennik*) deletes it (click twice). See [Log of hidden content](#log-of-hidden-content). |
+| **Backup** (*Kopia zapasowa*) | **Export settings** (*Eksportuj ustawienia*) saves every setting, the phrases and the learned examples to one file; **Import settings…** (*Importuj ustawienia…*) restores it after a summary and warnings. See [Backup and keyword files](#backup-and-keyword-files). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -97,6 +99,7 @@ parabene/
 │   ├── i18n.js            translation loader/formatter (placeholders, plural forms, DOM localization)
 │   ├── evaluators.js      ContentEvaluator, KeywordEvaluator, LocalAIEvaluator, FallbackEvaluator
 │   ├── learning.js        similarity of texts for learning from revealed content
+│   ├── backup.js          keyword files and the settings backup: formats, checks, migrations
 │   ├── content.js         MutationObserver, container heuristics, hiding/restoring, "Hide" bars
 │   ├── content.css        styles for hidden blocks and the placeholder bar
 │   └── background.js      service worker: default settings, local AI proxy (text and pictures), the built-in model's offscreen document, icon badge counter, log, learned examples, translations for content scripts
@@ -595,6 +598,78 @@ Turn on **Record hidden content** (*Zapisuj ukryte treści*) in the panel (or se
 
 ---
 
+## Backup and keyword files
+
+Settings live in the browser profile, so removing the extension (or loading the directory again
+as a new unpacked extension) loses them. The panel can save them to files and read them back.
+Nothing is sent anywhere: files are only saved to and read from your disk.
+
+**Keywords** (*Słowa kluczowe*) → **Export to file** (*Eksportuj do pliku*) saves
+`parabene-keywords-YYYYMMDD-HHMM.txt`, one phrase per line. Edit it in any text editor: lines
+starting with `#` are comments, and commas or semicolons separate phrases as in the panel's input.
+A phrase that itself starts with `#` (or `\`) is written with a `\` in front, e.g. `\#wypadek`,
+and the import removes it, as in `.gitignore`.
+
+```text
+# parabene-keywords 1
+# Słowa kluczowe ParaBene – wyeksportowano 17 lis 2026, 14:30 (wersja 1.0.0).
+# Jedna fraza w wierszu; wiersze zaczynające się od # są pomijane, frazę zaczynającą się od # poprzedź znakiem \.
+
+karambol
+nie żyje
+wypadek
+```
+
+**Import from file…** (*Importuj z pliku…*) reads such a file (or a settings backup, taking only
+its phrases), shows how many phrases are new, and then either **Add new ones** (*Dodaj nowe*) or
+**Replace the list** (*Zastąp listę*). Phrases are normalised as when typed; too short or too long
+ones are skipped and counted. A file without a single valid phrase is rejected, so the list is never
+replaced with an empty one; for the same reason an empty list cannot be exported.
+
+**Backup** (*Kopia zapasowa*) → **Export settings** (*Eksportuj ustawienia*) saves
+`parabene-settings-YYYYMMDD-HHMM.json` with every setting, the phrases and the learned examples
+(their texts included, so keep the file private). The log of hidden content and the built-in
+model's file are not part of it.
+
+```json
+{
+  "format": "parabene-settings",
+  "formatVersion": 1,
+  "extension": "ParaBene",
+  "extensionVersion": "1.0.0",
+  "exportedAt": "2026-11-17T13:30:00.000Z",
+  "settings": { "enabled": true, "keywords": ["wypadek", "..."], "aiEnabled": false, "...": "..." },
+  "learned": [{ "id": "…", "time": "…", "source": "keyword", "reason": "wypadek", "text": "…" }]
+}
+```
+
+**Import settings…** (*Importuj ustawienia…*) shows when and by which version the file was made,
+what it contains and any warnings, and applies it only after **Restore** (*Przywróć*). Settings
+and phrases are replaced; learned examples are added to the current ones (an example with the
+same id, or the same reason and text, is replaced — also between examples of the file, where the
+later one wins; the newest 300 are kept). The message counts only the examples actually kept and
+says how many were left out as older than the newest 300 or skipped as invalid (e.g. without text).
+
+Files from other versions are read as far as possible, with a warning for each difference:
+
+| Situation | What happens |
+| --- | --- |
+| A setting missing from the file (e.g. added in a later version) | The current value is kept. |
+| A setting this version does not know (file from a newer version) | Skipped. |
+| A value not valid here (e.g. a model id this version does not know) | Skipped; the current value is kept. |
+| An older `formatVersion` | Converted step by step to the current format before reading. |
+| A newer `formatVersion` | Read with the rules above. |
+
+For developers: adding a setting needs no new format version (older files just lack it). A change
+that makes older files wrong — a setting renamed, a value with a new meaning, a new structure —
+raises `FORMAT_VERSION` in `src/backup.js` and adds a step to `MIGRATIONS` there that converts the
+previous format.
+
+The extension's popup closes while a file is being chosen on most systems, so **Import…** in the
+popup opens the panel in a tab; click the import button there again to pick the file.
+
+---
+
 ## Learning from revealed content
 
 Turn on **Learn from revealed content** (*Ucz się z odkrytych treści*) in the **Learning** (*Samouczenie*) card (or set `PARABENE_LEARN_ENABLED=true` in `.env`) to teach ParaBene with your own clicks.
@@ -632,7 +707,7 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 ## Privacy
 
 - No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face, which starts when you click **Download model** for the [built-in model](#built-in-model-no-server); it carries no page content.
-- Settings are stored only in `chrome.storage.local`.
+- Settings are stored only in `chrome.storage.local`. They leave it only as a [backup or keywords file](#backup-and-keyword-files) you save yourself.
 - Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
 - The log of hidden content is off by default. When on, it stays in `chrome.storage.local` and leaves the browser only as a file you download yourself. It contains page addresses and texts, so review it before sharing.
 - With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.

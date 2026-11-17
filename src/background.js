@@ -129,6 +129,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     learnTask(() => forgetLearned(new Set(message.ids)));
     return false;
   }
+  if (message.type === Config.MSG.LEARN_IMPORT && isExtensionPage(sender) && Array.isArray(message.entries)) {
+    // Queued with the other writes to the examples; the panel shows the outcome (or the real error).
+    learnTask(() =>
+      importLearned(message.entries).then(
+        (data) => sendResponse({ ok: true, data }),
+        (err) => sendResponse({ ok: false, error: describeError(err) })
+      )
+    );
+    return true;
+  }
 
   if (message.type === Config.MSG.STATS && sender.tab && sender.tab.id >= 0) {
     updateBadge(sender.tab.id, message.hidden);
@@ -915,11 +925,11 @@ function isLearnId(id) {
 }
 
 /** Keeps only the known fields, with sane types and lengths; null when there is nothing to learn from. */
-function sanitizeLearnEntry(raw, id) {
+function sanitizeLearnEntry(raw, id, time) {
   if (!raw || typeof raw !== 'object') return null;
   const entry = {
     id,
-    time: new Date().toISOString(),
+    time: time || new Date().toISOString(),
     url: String(raw.url || '').slice(0, 500),
     source: raw.source === 'ai' ? 'ai' : 'keyword',
     category: typeof raw.category === 'string' ? raw.category.slice(0, 40) : '',
@@ -983,6 +993,42 @@ async function commitPending(select) {
   const learned = (await readLearned()).filter((entry) => !keys.has(learnKey(entry)));
   learned.push(...added);
   await chrome.storage.local.set({ [Config.LEARN_STORAGE_KEY]: learned.slice(-Config.LEARN_MAX_ENTRIES) });
+}
+
+/**
+ * Examples restored from a settings backup (the panel, src/backup.js): each one is checked like a
+ * new example, keeps its id and date, and replaces a stored example with the same id or the same
+ * reason and text (within the file, a later example replaces an earlier one the same way); the
+ * newest LEARN_MAX_ENTRIES are kept. → { imported, tooOld, skipped }: `imported` counts the examples
+ * of the file actually kept, `tooOld` those that fell outside the newest LEARN_MAX_ENTRIES.
+ */
+async function importLearned(entries) {
+  const byKey = new Map();
+  const keyById = new Map();
+  let skipped = 0;
+  for (const raw of entries) {
+    const time = raw && typeof raw.time === 'string' && !Number.isNaN(Date.parse(raw.time)) ? new Date(raw.time).toISOString() : '';
+    const entry = sanitizeLearnEntry(raw, raw && isLearnId(raw.id) ? raw.id : crypto.randomUUID(), time);
+    if (!entry) {
+      skipped += 1;
+      continue;
+    }
+    // A later duplicate in the file (same id, or same reason and text) wins: ids stay unique.
+    const key = learnKey(entry);
+    if (keyById.has(entry.id)) byKey.delete(keyById.get(entry.id));
+    if (byKey.has(key)) keyById.delete(byKey.get(key).id);
+    byKey.delete(key);
+    byKey.set(key, entry);
+    keyById.set(entry.id, key);
+  }
+  const imported = [...byKey.values()];
+  const learned = (await readLearned()).filter((entry) => !keyById.has(entry.id) && !byKey.has(learnKey(entry)));
+  const merged = [...learned, ...imported].sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  const kept = merged.slice(-Config.LEARN_MAX_ENTRIES);
+  await chrome.storage.local.set({ [Config.LEARN_STORAGE_KEY]: kept });
+  const importedSet = new Set(imported);
+  const keptImported = kept.filter((entry) => importedSet.has(entry)).length;
+  return { imported: keptImported, tooOld: imported.length - keptImported, skipped };
 }
 
 async function forgetLearned(ids) {

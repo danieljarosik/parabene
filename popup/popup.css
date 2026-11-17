@@ -379,6 +379,107 @@ body {
   text-decoration: underline;
 }
 
+/* Keyword actions: restore defaults · export · import */
+
+.card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 8px;
+}
+
+.card__actions .link {
+  margin-top: 0;
+}
+
+.card__actions .link:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+
+.card__actions-group {
+  display: flex;
+  gap: 12px;
+}
+
+/* Backup, and the confirmation of an import (keywords or settings) */
+
+.hint--lead {
+  margin: 0 0 10px;
+}
+
+.backup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup__actions .btn {
+  flex: 1 1 auto;
+}
+
+.import {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #ecc89c;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+.import__summary {
+  margin: 0;
+  font-size: 12px;
+}
+
+.import__summary + .import__summary,
+.import__warnings + .import__summary {
+  margin-top: 6px;
+}
+
+.import__warnings {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.import__warnings:empty {
+  display: none;
+}
+
+.import__warnings code {
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.import__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.import__buttons .link {
+  margin: 0 0 0 auto;
+}
+
+/* The panel opened in a tab (choosing a file closes the extension popup) */
+
+.in-tab body {
+  width: auto;
+}
+
+.in-tab .app {
+  max-width: 440px;
+  margin: 0 auto;
+  padding-top: 24px;
+}
+
 /* Phrase list */
 
 .chips {

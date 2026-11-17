@@ -4,6 +4,7 @@
 
   const Config = globalThis.ParaBeneConfig;
   const I18n = globalThis.ParaBeneI18n;
+  const Backup = globalThis.ParaBeneBackup;
   const profanity = new Set(Config.PROFANITY.map(Config.normalizeKeyword));
 
   const els = {
@@ -25,6 +26,13 @@
     keywordCount: document.getElementById('keyword-count'),
     keywordEmpty: document.getElementById('keyword-empty'),
     restoreDefaults: document.getElementById('restore-defaults'),
+    keywordsExport: document.getElementById('keywords-export'),
+    keywordsImport: document.getElementById('keywords-import'),
+    keywordsImportPanel: document.getElementById('keywords-import-panel'),
+    keywordsImportSummary: document.getElementById('keywords-import-summary'),
+    keywordsImportMerge: document.getElementById('keywords-import-merge'),
+    keywordsImportReplace: document.getElementById('keywords-import-replace'),
+    keywordsImportCancel: document.getElementById('keywords-import-cancel'),
     aiEnabled: document.getElementById('ai-enabled'),
     aiSettings: document.getElementById('ai-settings'),
     aiProtocol: document.getElementById('ai-protocol'),
@@ -60,6 +68,16 @@
     logStatus: document.getElementById('log-status'),
     logDownload: document.getElementById('log-download'),
     logClear: document.getElementById('log-clear'),
+    backupCard: document.getElementById('backup-card'),
+    settingsExport: document.getElementById('settings-export'),
+    settingsImport: document.getElementById('settings-import'),
+    backupStatus: document.getElementById('backup-status'),
+    settingsImportPanel: document.getElementById('settings-import-panel'),
+    settingsImportSummary: document.getElementById('settings-import-summary'),
+    settingsImportWarnings: document.getElementById('settings-import-warnings'),
+    settingsImportApply: document.getElementById('settings-import-apply'),
+    settingsImportCancel: document.getElementById('settings-import-cancel'),
+    importFile: document.getElementById('import-file'),
     version: document.getElementById('version'),
     language: document.getElementById('language'),
   };
@@ -78,12 +96,22 @@
   let learnedEntries = [];
   let pendingCount = 0;
   let learnClearArmedTimer = 0;
+  /** True when the panel runs in a browser tab, not in the toolbar popup (see openImport). */
+  let inTab = false;
+  /** What the file picker is for: 'keywords' or 'settings'. */
+  let importKind = '';
+  /** A read keywords file waiting for "Add new" / "Replace list": the result of parseKeywordsFile. */
+  let keywordImport = null;
+  /** A read settings backup waiting for "Restore": the result of parseSettingsFile. */
+  let settingsImport = null;
 
   /* ---------------- Internationalisation ---------------- */
 
   let i18n = I18n.createTranslator(Config.DEFAULT_LANGUAGE, null);
   let collator = new Intl.Collator(i18n.locale, { sensitivity: 'base' });
   let languageSeq = 0;
+  /** The language the panel shows or is switching to (set before its messages have loaded). */
+  let uiLanguage = null;
   const t = (key, substitutions) => i18n.t(key, substitutions);
   const plural = (key, count, substitutions) => i18n.plural(key, count, substitutions);
 
@@ -99,6 +127,7 @@
   /** Loads the chosen language (with the default language as fallback) and re-renders the UI. */
   async function applyLanguage(locale) {
     const seq = ++languageSeq;
+    uiLanguage = locale;
     const [messages, fallback] = await Promise.all([
       loadMessagesSafe(locale),
       locale === Config.DEFAULT_LANGUAGE ? null : loadMessagesSafe(Config.DEFAULT_LANGUAGE),
@@ -107,11 +136,13 @@
 
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
-    for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus]) {
+    for (const hint of [els.keywordFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus]) {
       clearTimeout(feedbackTimers.get(hint));
       feedbackTimers.delete(hint);
       hint.classList.remove('hint--ok', 'hint--error');
     }
+    // Unlike the other hints it has no text to translate again: a message in the old language goes.
+    els.backupStatus.textContent = '';
     I18n.localize(document, i18n);
     render();
     if (lastModel && settings.aiProtocol === 'builtin') renderModel(lastModel); // its text is set by script
@@ -172,6 +203,8 @@
     renderStats();
     renderLog();
     renderLearned();
+    renderKeywordImport();
+    renderSettingsImport();
   }
 
   function renderKeywords() {
@@ -200,6 +233,8 @@
     els.keywordList.replaceChildren(fragment);
     els.keywordCount.textContent = String(settings.keywords.length);
     els.keywordEmpty.hidden = settings.keywords.length > 0;
+    // A file without phrases could not be imported back.
+    els.keywordsExport.disabled = settings.keywords.length === 0;
     recentlyAdded = new Set();
   }
 
@@ -581,11 +616,16 @@
   function downloadLog() {
     if (logEntries.length === 0) return;
     const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
-    const blob = new Blob([buildLogFile()], { type: 'application/x-ndjson' });
+    saveFile(`parabene-log-${stamp}.jsonl`, buildLogFile(), 'application/x-ndjson');
+  }
+
+  /** Hands a generated file to the browser's downloads. */
+  function saveFile(name, text, type) {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `parabene-log-${stamp}.jsonl`;
+    link.download = name;
     document.body.append(link);
     link.click();
     link.remove();
@@ -719,6 +759,201 @@
     forgetLearned(learnedEntries.map((entry) => entry.id));
   }
 
+
+  /* ---------------- Export / import: keywords and the settings backup ---------------- */
+
+  function formatDateTime(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '?';
+    return new Intl.DateTimeFormat(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  }
+
+  function exportKeywords() {
+    if (settings.keywords.length === 0) return;
+    const now = new Date();
+    const header = [
+      t('keywordsFileHeader', [formatDateTime(now), chrome.runtime.getManifest().version]),
+      t('keywordsFileHint'),
+    ];
+    const sorted = [...settings.keywords].sort(collator.compare);
+    saveFile(`parabene-keywords-${Backup.fileStamp(now)}.txt`, Backup.buildKeywordsFile(sorted, header), 'text/plain');
+    showFeedback(els.keywordFeedback, plural('keywordsExported', sorted.length), 'ok', 'keywordHint');
+  }
+
+  function exportSettings() {
+    const now = new Date();
+    const text = Backup.buildSettingsFile({
+      settings,
+      learned: learnedEntries,
+      version: chrome.runtime.getManifest().version,
+      now,
+    });
+    saveFile(`parabene-settings-${Backup.fileStamp(now)}.json`, text, 'application/json');
+    showFeedback(els.backupStatus, t('settingsExported'), 'ok');
+  }
+
+  /**
+   * The file picker closes the toolbar popup on most systems (it takes the focus away), so the
+   * popup opens the panel in a tab and the user picks the file there.
+   */
+  function openImport(kind) {
+    if (!inTab) {
+      chrome.tabs.create({ url: chrome.runtime.getURL(`popup/popup.html?import=${kind}`) });
+      window.close();
+      return;
+    }
+    importKind = kind;
+    els.importFile.value = '';
+    els.importFile.click();
+  }
+
+  function importErrorText(err) {
+    const code = err instanceof Backup.BackupError ? err.code : 'readFailed';
+    return t(`importError_${code}`, err && err.message ? err.message : '?');
+  }
+
+  async function readImportFile() {
+    const file = els.importFile.files && els.importFile.files[0];
+    els.importFile.value = '';
+    if (!file) return;
+    const kind = importKind;
+    const status = kind === 'keywords' ? els.keywordFeedback : els.backupStatus;
+    const fallback = kind === 'keywords' ? 'keywordHint' : null;
+    keywordImport = null;
+    settingsImport = null;
+    renderKeywordImport();
+    renderSettingsImport();
+    try {
+      if (file.size > Backup.MAX_FILE_BYTES) throw new Backup.BackupError('tooLarge');
+      const text = await file.text();
+      if (kind === 'keywords') keywordImport = Backup.parseKeywordsFile(text);
+      else settingsImport = Backup.parseSettingsFile(text);
+      showFeedback(status, t('importReady', file.name), null, fallback);
+    } catch (err) {
+      showFeedback(status, importErrorText(err), 'error');
+    }
+    renderKeywordImport();
+    renderSettingsImport();
+    const panel = kind === 'keywords' ? els.keywordsImportPanel : els.settingsImportPanel;
+    if (!panel.hidden) panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  function newKeywords() {
+    if (!keywordImport) return [];
+    const existing = new Set(settings.keywords);
+    return keywordImport.keywords.filter((keyword) => !existing.has(keyword));
+  }
+
+  function renderKeywordImport() {
+    els.keywordsImportPanel.hidden = !keywordImport;
+    if (!keywordImport) return;
+    const fresh = newKeywords().length;
+    const sentences = [plural('keywordsImportFound', keywordImport.keywords.length), t('keywordsImportNew', i18n.formatNumber(fresh))];
+    if (keywordImport.skipped) sentences.push(t('keywordsSkipped', i18n.formatNumber(keywordImport.skipped)));
+    if (keywordImport.fromSettings) sentences.push(t('keywordsImportFromSettings'));
+    els.keywordsImportSummary.textContent = sentences.join(' ');
+    els.keywordsImportMerge.disabled = fresh === 0;
+  }
+
+  async function applyKeywordImport(replace) {
+    if (!keywordImport) return;
+    const imported = keywordImport.keywords;
+    const added = newKeywords();
+    keywordImport = null;
+    renderKeywordImport();
+    if (replace) {
+      recentlyAdded = new Set(added);
+      await chrome.storage.local.set({ keywords: imported });
+      showFeedback(els.keywordFeedback, plural('keywordsReplaced', imported.length), 'ok', 'keywordHint');
+    } else if (added.length === 0) {
+      showFeedback(els.keywordFeedback, t('keywordsImportNothingNew'), 'ok', 'keywordHint');
+    } else {
+      recentlyAdded = new Set(added);
+      await chrome.storage.local.set({ keywords: [...settings.keywords, ...added] });
+      showFeedback(els.keywordFeedback, plural('keywordsAdded', added.length), 'ok', 'keywordHint');
+    }
+  }
+
+  /** A warning from parseSettingsFile → a list item; setting names are shown as they are stored. */
+  function importWarning(warning) {
+    const item = document.createElement('li');
+    const key = `importWarn_${warning.code}`;
+    if (warning.items) {
+      const [before, after = ''] = t(key, '\u0000').split('\u0000');
+      item.append(before);
+      warning.items.forEach((name, index) => {
+        if (index) item.append(', ');
+        const code = document.createElement('code');
+        code.textContent = name;
+        item.append(code);
+      });
+      item.append(after);
+    } else if (warning.code === 'keywordsSkipped') {
+      item.textContent = t(key, i18n.formatNumber(warning.count));
+    } else {
+      item.textContent = t(key, [String(warning.version), String(Backup.FORMAT_VERSION)]);
+    }
+    return item;
+  }
+
+  function renderSettingsImport() {
+    els.settingsImportPanel.hidden = !settingsImport;
+    if (!settingsImport) return;
+    const { settings: found, learned, meta, warnings } = settingsImport;
+    const settingCount = Object.keys(found).filter((key) => key !== 'keywords').length;
+    const sentences = [
+      t('settingsImportSummary', [meta.exportedAt ? formatDateTime(meta.exportedAt) : '?', meta.extensionVersion || '?']),
+      t('settingsImportContents', [
+        i18n.formatNumber(settingCount),
+        found.keywords ? i18n.formatNumber(found.keywords.length) : '–',
+        i18n.formatNumber(learned ? learned.length : 0),
+      ]),
+    ];
+    els.settingsImportSummary.textContent = sentences.join(' ');
+    els.settingsImportWarnings.replaceChildren(...warnings.map(importWarning));
+    els.settingsImportApply.disabled = Object.keys(found).length === 0 && !(learned && learned.length);
+  }
+
+  async function applySettingsImport() {
+    if (!settingsImport) return;
+    const { settings: found, learned } = settingsImport;
+    settingsImport = null;
+    renderSettingsImport();
+    // Messages below in the restored language (the storage listener switches it too).
+    if (found.language && found.language !== settings.language) await applyLanguage(found.language);
+    await chrome.storage.local.set(found);
+    const sentences = [t('settingsImported')];
+    let kind = 'ok';
+    if (learned && learned.length) {
+      try {
+        const response = await chrome.runtime.sendMessage({ type: Config.MSG.LEARN_IMPORT, entries: learned });
+        if (!(response && response.ok)) throw Object.assign(new Error(), { described: describeAiError(response && response.error) });
+        sentences.push(t('settingsImportedLearned', i18n.formatNumber(response.data.imported)));
+        if (response.data.tooOld > 0) {
+          sentences.push(t('settingsImportedLearnedTooOld', [i18n.formatNumber(Config.LEARN_MAX_ENTRIES), i18n.formatNumber(response.data.tooOld)]));
+        }
+        if (response.data.skipped > 0) {
+          sentences.push(t('settingsImportedLearnedSkipped', i18n.formatNumber(response.data.skipped)));
+        }
+      } catch (err) {
+        sentences.push(t('settingsImportLearnedFailed', err.described || t('aiError_unknown', err.message)));
+        kind = 'error';
+      }
+    }
+    showFeedback(els.backupStatus, sentences.join(' '), kind);
+  }
+
+  /** Opened by the popup for an import (?import=keywords|settings): point at the button to click. */
+  function showImportInTab() {
+    const kind = new URLSearchParams(location.search).get('import');
+    if (kind !== 'keywords' && kind !== 'settings') return;
+    const button = kind === 'keywords' ? els.keywordsImport : els.settingsImport;
+    const status = kind === 'keywords' ? els.keywordFeedback : els.backupStatus;
+    showFeedback(status, t('importInTab'), null);
+    button.scrollIntoView({ block: 'center' });
+    button.focus();
+  }
+
   /* ---------------- Current tab ---------------- */
 
   async function refreshStats() {
@@ -744,6 +979,26 @@
     });
     els.keywordForm.addEventListener('submit', addKeywords);
     els.restoreDefaults.addEventListener('click', restoreDefaults);
+    els.keywordsExport.addEventListener('click', exportKeywords);
+    els.keywordsImport.addEventListener('click', () => openImport('keywords'));
+    els.keywordsImportMerge.addEventListener('click', () => applyKeywordImport(false));
+    els.keywordsImportReplace.addEventListener('click', () => applyKeywordImport(true));
+    els.keywordsImportCancel.addEventListener('click', () => {
+      keywordImport = null;
+      renderKeywordImport();
+      showFeedback(els.keywordFeedback, t('keywordHint'), null);
+    });
+    els.settingsExport.addEventListener('click', exportSettings);
+    els.settingsImport.addEventListener('click', () => openImport('settings'));
+    els.settingsImportApply.addEventListener('click', () => {
+      applySettingsImport().catch((err) => showFeedback(els.backupStatus, importErrorText(err), 'error'));
+    });
+    els.settingsImportCancel.addEventListener('click', () => {
+      settingsImport = null;
+      renderSettingsImport();
+      showFeedback(els.backupStatus, '', null);
+    });
+    els.importFile.addEventListener('change', readImportFile);
     els.aiEnabled.addEventListener('change', () => {
       chrome.storage.local.set({ aiEnabled: els.aiEnabled.checked });
     });
@@ -821,9 +1076,9 @@
       if (keys.length === 0) return;
       const next = Object.assign({}, settings);
       for (const key of keys) next[key] = changes[key].newValue;
-      const previousLanguage = settings.language;
       settings = Config.sanitize(next);
-      if (settings.language !== previousLanguage) {
+      // Not when the panel already switched (a restored backup): a second switch would clear its message.
+      if (settings.language !== uiLanguage) {
         applyLanguage(settings.language).catch((err) => console.error('[ParaBene]', err));
       } else {
         render();
@@ -854,12 +1109,15 @@
 
   async function init() {
     els.version.textContent = `v${chrome.runtime.getManifest().version}`;
+    inTab = Boolean(await chrome.tabs.getCurrent().catch(() => null));
+    document.documentElement.classList.toggle('in-tab', inTab);
     bind();
     settings = await Config.load();
     await loadLog();
     await loadLearned();
     await applyLanguage(settings.language);
     document.documentElement.classList.remove('i18n-pending');
+    if (inTab) showImportInTab();
     await refreshStats();
     refreshModel();
   }

@@ -996,5 +996,405 @@
         "example": "3"
       }
     }
+  },
+  "keywordsExport": {
+    "message": "Export to file",
+    "description": "Link that saves the keyword list to a text file."
+  },
+  "keywordsImport": {
+    "message": "Import from file…",
+    "description": "Link that opens a file with keywords to import."
+  },
+  "keywordsFileHeader": {
+    "message": "ParaBene keywords – exported $date$ (version $version$).",
+    "description": "Comment line at the top of an exported keywords file.",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "17 lis 2026, 14:30"
+      },
+      "version": {
+        "content": "$2",
+        "example": "1.0.0"
+      }
+    }
+  },
+  "keywordsFileHint": {
+    "message": "One phrase per line; lines starting with # are ignored, put \\ before a phrase that starts with #.",
+    "description": "Comment line in an exported keywords file explaining how to edit it."
+  },
+  "keywordsExported_one": {
+    "message": "Saved $count$ phrase to a file.",
+    "description": "Confirmation after exporting the keywords (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsExported_few": {
+    "message": "Saved $count$ phrases to a file.",
+    "description": "Confirmation after exporting the keywords (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsExported_many": {
+    "message": "Saved $count$ phrases to a file.",
+    "description": "Confirmation after exporting the keywords (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsExported_other": {
+    "message": "Saved $count$ phrases to a file.",
+    "description": "Confirmation after exporting the keywords (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsImportFound_one": {
+    "message": "The file contains $count$ phrase.",
+    "description": "Summary of a keywords file before importing it (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsImportFound_few": {
+    "message": "The file contains $count$ phrases.",
+    "description": "Summary of a keywords file before importing it (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsImportFound_many": {
+    "message": "The file contains $count$ phrases.",
+    "description": "Summary of a keywords file before importing it (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsImportFound_other": {
+    "message": "The file contains $count$ phrases.",
+    "description": "Summary of a keywords file before importing it (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsImportNew": {
+    "message": "New: $count$.",
+    "description": "How many phrases from the file are not on the list yet.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "keywordsImportFromSettings": {
+    "message": "The phrases come from a settings backup.",
+    "description": "Shown when a settings backup was chosen in the keywords import."
+  },
+  "keywordsImportMerge": {
+    "message": "Add new ones",
+    "description": "Button: add the phrases from the file that are not on the list yet."
+  },
+  "keywordsImportReplace": {
+    "message": "Replace the list",
+    "description": "Button: replace the whole keyword list with the phrases from the file."
+  },
+  "keywordsImportNothingNew": {
+    "message": "All phrases from the file are already on the list.",
+    "description": "Shown after importing a keywords file with no new phrases."
+  },
+  "keywordsReplaced_one": {
+    "message": "List replaced: $count$ phrase.",
+    "description": "Confirmation after replacing the keyword list with a file (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsReplaced_few": {
+    "message": "List replaced: $count$ phrases.",
+    "description": "Confirmation after replacing the keyword list with a file (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsReplaced_many": {
+    "message": "List replaced: $count$ phrases.",
+    "description": "Confirmation after replacing the keyword list with a file (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "keywordsReplaced_other": {
+    "message": "List replaced: $count$ phrases.",
+    "description": "Confirmation after replacing the keyword list with a file (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importCancel": {
+    "message": "Cancel",
+    "description": "Link that discards a file read for import."
+  },
+  "importReady": {
+    "message": "Read the file “$name$”. Check the summary below.",
+    "description": "Shown after a file for import was read, before it is applied.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "parabene-settings-20261117-1430.json"
+      }
+    }
+  },
+  "importInTab": {
+    "message": "The extension popup closes while a file is being chosen, so the panel was opened in a tab. Click the import button again.",
+    "description": "Shown when the panel was opened in a tab to import a file."
+  },
+  "importError_invalidJson": {
+    "message": "Cannot read the file: it is not valid JSON.",
+    "description": "Import error."
+  },
+  "importError_notParabene": {
+    "message": "This is not a ParaBene file.",
+    "description": "Import error: the file is not a ParaBene export."
+  },
+  "importError_keywordsFile": {
+    "message": "This is a keywords file – import it in the “Keywords” section.",
+    "description": "Import error: a keywords file was chosen for a settings restore."
+  },
+  "importError_noKeywords": {
+    "message": "The file contains no phrases.",
+    "description": "Import error: no usable phrases in the file."
+  },
+  "importError_unsupportedVersion": {
+    "message": "This version of the file format cannot be read.",
+    "description": "Import error: the file's format version cannot be converted."
+  },
+  "importError_tooLarge": {
+    "message": "The file is too large.",
+    "description": "Import error: the file exceeds the size limit."
+  },
+  "importError_readFailed": {
+    "message": "Could not read the file: $detail$.",
+    "description": "Import error with technical details.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "NotReadableError"
+      }
+    }
+  },
+  "backupTitle": {
+    "message": "Backup",
+    "description": "Heading of the backup section."
+  },
+  "backupDesc": {
+    "message": "Save all settings, phrases and learned examples to a file to restore them, e.g. after reinstalling the extension.",
+    "description": "Description of the backup section."
+  },
+  "settingsExport": {
+    "message": "Export settings",
+    "description": "Button that saves the settings backup file."
+  },
+  "settingsImport": {
+    "message": "Import settings…",
+    "description": "Button that opens a settings backup file."
+  },
+  "settingsExported": {
+    "message": "Saved a backup of the settings.",
+    "description": "Confirmation after exporting the settings."
+  },
+  "settingsImportSummary": {
+    "message": "Backup from $date$ (ParaBene $version$).",
+    "description": "First line of the summary of a settings backup before restoring it.",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "17 lis 2026, 14:30"
+      },
+      "version": {
+        "content": "$2",
+        "example": "1.0.0"
+      }
+    }
+  },
+  "settingsImportContents": {
+    "message": "Settings: $settings$ · phrases: $keywords$ · learned examples: $learned$.",
+    "description": "What a settings backup contains.",
+    "placeholders": {
+      "settings": {
+        "content": "$1",
+        "example": "14"
+      },
+      "keywords": {
+        "content": "$2",
+        "example": "42"
+      },
+      "learned": {
+        "content": "$3",
+        "example": "7"
+      }
+    }
+  },
+  "settingsImportNote": {
+    "message": "Restoring replaces the current settings and phrase list; learned examples are added to the current ones.",
+    "description": "Explains what restoring a backup does."
+  },
+  "settingsImportApply": {
+    "message": "Restore",
+    "description": "Button that applies a settings backup."
+  },
+  "settingsImported": {
+    "message": "Settings restored from the file.",
+    "description": "Confirmation after restoring a settings backup."
+  },
+  "settingsImportedLearned": {
+    "message": "Learned examples added: $count$.",
+    "description": "Appended after restoring a backup with learned examples.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "settingsImportedLearnedTooOld": {
+    "message": "Only the newest $max$ are kept; older ones left out: $count$.",
+    "description": "Appended after restoring a backup when some learned examples were dropped because only the newest ones are kept.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "300"
+      },
+      "count": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "settingsImportedLearnedSkipped": {
+    "message": "Invalid examples skipped: $count$.",
+    "description": "Appended after restoring a backup when some learned examples in the file were not valid (e.g. without text).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "settingsImportLearnedFailed": {
+    "message": "Could not restore the learned examples: $error$.",
+    "description": "Appended when the learned examples from a backup could not be stored.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "…"
+      }
+    }
+  },
+  "importWarn_newerFormat": {
+    "message": "The file comes from a newer version of ParaBene (format $file$, this version knows format $current$). Settings this version does not know will be skipped.",
+    "description": "Import warning: the backup was made by a newer version.",
+    "placeholders": {
+      "file": {
+        "content": "$1",
+        "example": "2"
+      },
+      "current": {
+        "content": "$2",
+        "example": "1"
+      }
+    }
+  },
+  "importWarn_olderFormat": {
+    "message": "The file comes from an older version of ParaBene (format $file$) and was converted to the current format ($current$).",
+    "description": "Import warning: the backup was made by an older version and migrated.",
+    "placeholders": {
+      "file": {
+        "content": "$1",
+        "example": "1"
+      },
+      "current": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "importWarn_unknownKeys": {
+    "message": "Unknown settings will be skipped: $names$.",
+    "description": "Import warning listing setting names this version does not know.",
+    "placeholders": {
+      "names": {
+        "content": "$1",
+        "example": "aiStrategy"
+      }
+    }
+  },
+  "importWarn_invalidValues": {
+    "message": "Invalid values will be skipped (these settings stay unchanged): $names$.",
+    "description": "Import warning listing settings whose values are not valid.",
+    "placeholders": {
+      "names": {
+        "content": "$1",
+        "example": "aiModel"
+      }
+    }
+  },
+  "importWarn_missingKeys": {
+    "message": "The file lacks these settings, so they stay unchanged: $names$.",
+    "description": "Import warning listing settings missing from the file.",
+    "placeholders": {
+      "names": {
+        "content": "$1",
+        "example": "aiImagesEnabled"
+      }
+    }
+  },
+  "importWarn_keywordsSkipped": {
+    "message": "Phrases skipped as too short or too long: $count$.",
+    "description": "Import warning: some phrases in the backup were rejected.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
   }
 }

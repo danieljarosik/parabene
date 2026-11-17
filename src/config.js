@@ -258,6 +258,8 @@
     LEARN_COMMIT: 'parabene:learnCommit',
     LEARN_CANCEL: 'parabene:learnCancel',
     LEARN_FORGET: 'parabene:learnForget',
+    // panel → service worker: examples restored from a settings backup (src/backup.js)
+    LEARN_IMPORT: 'parabene:learnImport',
     // panel → service worker (the built-in model's file)
     MODEL_STATUS: 'parabene:modelStatus',
     MODEL_DOWNLOAD: 'parabene:modelDownload',
@@ -432,6 +434,38 @@
     return typeof value === 'string' && Object.prototype.hasOwnProperty.call(UI_LANGUAGES, value);
   }
 
+  /**
+   * One setting checked on its own (a value read from a backup file, see src/backup.js): the clean
+   * value, or undefined when the key is unknown or the value is not valid for it. Unlike sanitize()
+   * nothing is replaced with a default, so the caller can tell the user what was skipped.
+   */
+  function validateSetting(key, value) {
+    if (BOOLEAN_SETTINGS.has(key)) return typeof value === 'boolean' ? value : undefined;
+    switch (key) {
+      case 'keywords':
+        return Array.isArray(value) && value.every((item) => typeof item === 'string') ? uniqueKeywords(value) : undefined;
+      case 'aiEndpoint':
+      case 'aiImagesEndpoint':
+        return typeof value === 'string' && isValidEndpoint(value.trim()) ? value.trim() : undefined;
+      case 'aiProtocol':
+        return isSupportedProtocol(value) ? value : undefined;
+      case 'aiModel':
+        return isBuiltinModel(value) ? value : undefined;
+      case 'aiMode':
+        return isSupportedMode(value) ? value : undefined;
+      case 'aiSensitivity':
+        return isSupportedSensitivity(value) ? value : undefined;
+      case 'aiTopics':
+        return Array.isArray(value) && value.every((topic) => AI_TOPICS.includes(topic)) ? sanitizeTopics(value) : undefined;
+      case 'learnSimilarity':
+        return isSupportedSimilarity(value) ? value : undefined;
+      case 'language':
+        return isSupportedLanguage(value) ? value : undefined;
+      default:
+        return undefined;
+    }
+  }
+
   function sanitize(raw) {
     const s = Object.assign({}, DEFAULT_SETTINGS, raw || {});
     const endpoint = typeof s.aiEndpoint === 'string' ? s.aiEndpoint.trim() : '';
@@ -544,6 +578,7 @@
     sanitizeTopics,
     resolveEndpoint,
     parseEnv,
+    validateSetting,
     sanitize,
     load,
     categories,
