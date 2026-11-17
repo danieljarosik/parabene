@@ -31,6 +31,8 @@
     aiEndpoint: document.getElementById('ai-endpoint'),
     aiEndpointLabel: document.getElementById('ai-endpoint-label'),
     aiModel: document.getElementById('ai-model'),
+    aiModelSelect: document.getElementById('ai-model-select'),
+    aiModelNote: document.getElementById('ai-model-note'),
     aiModelStatus: document.getElementById('ai-model-status'),
     aiModelProgress: document.getElementById('ai-model-progress'),
     aiModelDownload: document.getElementById('ai-model-download'),
@@ -112,6 +114,7 @@
     }
     I18n.localize(document, i18n);
     render();
+    if (lastModel && settings.aiProtocol === 'builtin') renderModel(lastModel); // its text is set by script
   }
 
   function renderLanguagePicker() {
@@ -140,6 +143,7 @@
     els.aiEndpoint.hidden = builtin;
     els.aiEndpointLabel.hidden = builtin;
     els.aiModel.hidden = !builtin;
+    renderModelPicker();
     els.aiEndpoint.placeholder = Config.DEFAULT_ENDPOINTS[settings.aiProtocol] || '';
     if (document.activeElement !== els.aiEndpoint) els.aiEndpoint.value = settings.aiEndpoint;
     els.aiMode.value = settings.aiMode;
@@ -345,15 +349,46 @@
   /* ---------------- Built-in model: its file ---------------- */
 
   let modelTimer = null;
+  let modelSeq = 0;
+  /** The last state the service worker gave, kept to show it again in another language. */
+  let lastModel = null;
+
+  /** A file size in gigabytes, in the UI language (1.2 / 1,2). */
+  function gigabytes(bytes) {
+    return i18n.formatNumber(Math.round(bytes / 1e8) / 10);
+  }
+
+  /** The list of built-in models with their sizes, the chosen one and the hint about it. */
+  function renderModelPicker() {
+    const chosen = Config.builtinModel(settings.aiModel);
+    els.aiModelSelect.replaceChildren(
+      ...Config.BUILTIN_MODELS.map((model) => {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = t('aiModelOption', [model.name, gigabytes(model.bytes)]);
+        return option;
+      })
+    );
+    els.aiModelSelect.value = chosen.id;
+    els.aiModelNote.textContent = t(chosen.note);
+    els.aiModelDownload.textContent = t('aiModelDownload', gigabytes(chosen.bytes));
+  }
+
+  async function saveModel() {
+    const id = els.aiModelSelect.value;
+    if (!Config.isBuiltinModel(id) || id === settings.aiModel) return;
+    await chrome.storage.local.set({ aiModel: id }); // the storage listener renders and asks for the new model's state
+  }
 
   /**
-   * Shows whether the model file is stored, and the "Download model" button while it is not: the
-   * built-in model is used only after the user has downloaded the file with that button.
+   * Shows whether the chosen model's file is stored, and the "Download model" button while it is
+   * not: the built-in model is used only after the user has downloaded the file with that button.
    * While a download or a load runs, the state is asked again every second.
    */
   async function refreshModel() {
     clearTimeout(modelTimer);
     if (settings.aiProtocol !== 'builtin') return;
+    const seq = ++modelSeq;
     let model;
     try {
       const response = await chrome.runtime.sendMessage({ type: Config.MSG.MODEL_STATUS });
@@ -361,23 +396,27 @@
     } catch (err) {
       model = { status: 'error', error: { code: 'unknown', detail: err.message } };
     }
-    if (settings.aiProtocol !== 'builtin') return; // changed while waiting
+    // Changed while waiting: a newer request, another format or another model.
+    if (seq !== modelSeq || settings.aiProtocol !== 'builtin') return;
+    if (model.model && model.model !== Config.builtinModel(settings.aiModel).id) return;
+    lastModel = model;
     renderModel(model);
-    clearTimeout(modelTimer);
     if (model.status === 'downloading' || model.status === 'loading') modelTimer = setTimeout(refreshModel, 1000);
   }
 
-  function renderModel({ status, progress, error }) {
+  function renderModel({ status, progress, error, stored }) {
     const percent = Math.floor((progress || 0) * 100);
     const downloading = status === 'downloading';
     if (status === 'missing') showFeedback(els.aiModelStatus, t('aiModelMissing'), null);
     else if (downloading) showFeedback(els.aiModelStatus, t('aiModelDownloading', String(percent)), null);
     else if (status === 'loading') showFeedback(els.aiModelStatus, t('aiModelLoading'), null);
+    else if (status === 'error' && stored) showFeedback(els.aiModelStatus, t('aiModelStoredFailed', describeAiError(error)), 'error');
     else if (status === 'error') showFeedback(els.aiModelStatus, t('aiModelFailed', describeAiError(error)), 'error');
     else showFeedback(els.aiModelStatus, t('aiModelStored'), 'ok');
     els.aiModelProgress.hidden = !downloading;
     els.aiModelProgress.value = percent;
-    els.aiModelDownload.hidden = status !== 'missing' && status !== 'error';
+    // A stored file that fails to load is not downloaded again: there is nothing to download.
+    els.aiModelDownload.hidden = !(status === 'missing' || (status === 'error' && !stored));
     els.aiModelDownload.disabled = false;
   }
 
@@ -526,6 +565,7 @@
       settings: {
         aiEnabled: settings.aiEnabled,
         aiProtocol: settings.aiProtocol,
+        aiModel: settings.aiProtocol === 'builtin' ? settings.aiModel : undefined,
         aiMode: settings.aiMode,
         aiSensitivity: settings.aiSensitivity,
         aiThreshold: Config.AI_SENSITIVITIES[settings.aiSensitivity],
@@ -709,6 +749,7 @@
     });
     els.aiProtocol.addEventListener('change', saveProtocol);
     els.aiModelDownload.addEventListener('click', downloadModel);
+    els.aiModelSelect.addEventListener('change', saveModel);
     els.aiMode.addEventListener('change', () => {
       if (Config.isSupportedMode(els.aiMode.value)) chrome.storage.local.set({ aiMode: els.aiMode.value });
     });
@@ -788,7 +829,16 @@
         render();
       }
       if (keys.includes('enabled')) setTimeout(refreshStats, 400);
-      if (keys.some((key) => key === 'aiProtocol' || key === 'aiEnabled' || key === 'enabled')) refreshModel();
+      if (keys.some((key) => ['aiProtocol', 'aiModel', 'aiEnabled', 'enabled'].includes(key))) {
+        if (keys.includes('aiModel') || keys.includes('aiProtocol')) {
+          // Another model: do not show the previous one's state while the new one is asked for.
+          lastModel = null;
+          els.aiModelStatus.textContent = '';
+          els.aiModelProgress.hidden = true;
+          els.aiModelDownload.hidden = true;
+        }
+        refreshModel();
+      }
     });
 
     chrome.runtime.onMessage.addListener((message, sender) => {

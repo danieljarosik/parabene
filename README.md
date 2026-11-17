@@ -148,6 +148,7 @@ All settings live in `chrome.storage.local`:
   "aiEnabled": false,
   "aiEndpoint": "http://localhost:8000/classify",
   "aiProtocol": "simple",
+  "aiModel": "basal-2.0-mini-q5",
   "aiMode": "both",
   "aiSensitivity": "medium",
   "aiTopics": ["accident", "violence", "death", "profanity"],
@@ -178,7 +179,7 @@ PARABENE_AI_IMAGES_ENABLED=true
 PARABENE_AI_IMAGES_ENDPOINT=http://192.168.1.170:8011
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`/`builtin`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`/`builtin`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODEL` (a built-in model's id, see [Models](#models)), `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -349,7 +350,9 @@ python3 tools/basal_check.py --url http://192.168.1.170:8010
 
 Pick **Built-in model (in the browser, WebGPU)** (*Wbudowany model (w przeglądarce, WebGPU)*) under **Request format** (*Format zapytań*), or set `PARABENE_AI_PROTOCOL=builtin` in `.env`, to run the basal model inside the browser. Nothing has to be installed or started, and page text does not leave the browser. Pages are judged as with a server; only the place where the model computes changes.
 
-**The model file is downloaded only when you ask for it.** With this format selected the panel shows whether the file (1.17 GB) is already stored. While it is not, the built-in model is off, pages are filtered by keywords and the panel offers **Download model (1.2 GB)** (*Pobierz model (1,2 GB)*). Neither selecting the format nor a `.env` file nor **Test** (*Testuj*) starts a download.
+**You pick the model** under **Model** in the panel, from a fixed list (see [Models](#models)); `PARABENE_AI_MODEL` in `.env` does the same.
+
+**A model file is downloaded only when you ask for it.** With this format selected the panel shows whether the file of the chosen model is already stored. While it is not, the built-in model is off, pages are filtered by keywords and the panel offers **Download model (1.2 GB)** (*Pobierz model (1,2 GB)*, with the size of that model). Neither selecting the format or a model nor a `.env` file nor **Test** (*Testuj*) starts a download.
 
 #### What changes
 
@@ -373,9 +376,25 @@ flowchart LR
     end
 ```
 
-- **What runs.** [basal-2.0-mini](https://huggingface.co/Remek/basal-2.0-mini-GGUF) as a GGUF file (`Q5_K_M`, 1.17 GB), by llama.cpp compiled to WebAssembly ([wllama](https://github.com/ngxson/wllama)), on the graphics card through WebGPU. It answers the same question as [basal-serve](#basal-serve-v1basal), so **Sensitivity** and **Hidden topics** apply. The prompt and the calibration are not rewritten in JavaScript: wllama has a decision API (`createSystemOne`), and the `-decision.gguf` variant of the model file carries the metadata it needs.
-- **Requirements.** A browser with WebGPU. Tested on macOS with Apple Silicon: the extension loaded unpacked in Chrome (checked by hand) and in Brave 156 (M4 Pro, scripted measurements). There is no CPU fallback (see [Speed](#speed)). Without WebGPU, **Test** (*Testuj*) says so and keywords are used.
+- **What runs.** A basal model as a GGUF file (by default [basal-2.0-mini](https://huggingface.co/Remek/basal-2.0-mini-GGUF), `Q5_K_M`, 1.17 GB), by llama.cpp compiled to WebAssembly ([wllama](https://github.com/ngxson/wllama)), on the graphics card through WebGPU. It answers the same question as [basal-serve](#basal-serve-v1basal), so **Sensitivity** and **Hidden topics** apply. The prompt and the calibration are not rewritten in JavaScript: wllama has a decision API (`createSystemOne`), and the `-decision.gguf` variant of the model file carries the metadata it needs.
+- **Requirements.** A browser with WebGPU. Tested on macOS with Apple Silicon: the extension loaded unpacked in Chrome (checked by hand) and in Brave 156 (M4 Pro, scripted measurements). There is no CPU fallback (see [Speed](#speed)). Without WebGPU, **Download model** (*Pobierz model*) fails with that message, nothing is downloaded and keywords are used.
 - **Pictures** are not judged by the built-in model; [image evaluation](#image-evaluation-basal-omni) still needs its own server.
+
+#### Models
+
+The list is fixed in `src/config.js` (`BUILTIN_MODELS`). It holds only files that carry basal's decision metadata (`-decision.gguf`) and that were loaded and measured in the browser; each address pins a revision.
+
+| Model (`aiModel`, `PARABENE_AI_MODEL`) | File | One decision: ~100 / 500 / 2,000 characters | Publisher's test accuracy |
+| --- | ---: | ---: | ---: |
+| basal-omni-pico, `Q8_0` (`basal-omni-pico-q8`) | 0.81 GB | 0.17 / 0.29 / 0.64 s | 0.83 |
+| basal-2.0-mini, `Q5_K_M` (`basal-2.0-mini-q5`, the default) | 1.17 GB | 0.33 / 0.53 / 1.18 s | 0.82 |
+
+- **Times** are medians on an Apple M4 Pro, measured on a plain page with the same wllama build. Twenty texts of 500 characters sent at once took 5.7 s and 10.5 s.
+- **Accuracy** is the publisher's figure from each model's `basal.json` (8,560 test decisions), not a measurement on news pages. On our 24 Polish texts both hid the 5 short negative texts and showed the 5 neutral ones; of 5 negative leads followed by 400 neutral characters, pico hid 2 and mini 1.
+- **Scores are not comparable between models**: pico gives 0.97–0.99 where mini gives about 0.8 for the same short negative texts, so **Sensitivity** acts differently.
+- **basal-omni-pico is text only** here, like every GGUF port of an omni model: the files carry no image encoder, and wllama's decision API takes no pictures.
+- **Left out:** basal-2.0-mini `Q8_0` (1.70 GB) gave the same verdicts and times as `Q5_K_M`. basal-2.0-4.5B `Q5_K_M` (3.42 GB, publisher's accuracy 0.88) loads and decides in the browser and hid 4 of those 5 diluted texts, but takes 0.93 / 1.50 / 3.45 s: twenty texts at once took 29.9 s, the whole 30 s a request may wait. Larger files (basal-2.0-max, basal-omni-mini) were not tried.
+- **One model at a time.** Choosing another model closes the offscreen document and opens it with the new file; a model whose file is not stored stays off until you download it. Each downloaded file stays in the storage.
 
 #### How a decision travels
 
@@ -415,17 +434,20 @@ stateDiagram-v2
     Failed --> Downloading: Download model clicked
     Loading --> Ready: model in memory
     Ready --> Stored: filter, AI model or builtin format off
+    Downloading --> Missing: another model or format chosen
+    Loading --> Stored: filter, AI model or builtin format off
     Stored --> Loading: filter, AI model and builtin format on
     Stored --> Missing: browser removed the file
+    Missing --> Stored: file found without a record
 ```
 
-The document is open in *Downloading*, *Loading* and *Ready* and closed in *Missing*, *Failed* and *Stored*.
+The diagram is the state of the chosen model's file. The document is open in *Downloading*, *Loading* and *Ready* and closed in *Missing*, *Failed* and *Stored*, except for a moment while the panel asks whether the file is in the storage. A stored file that fails to load (for example, WebGPU is gone) keeps its record: the panel shows the error and offers no download.
 
-- **The state of the file** is kept by the service worker in `chrome.storage.local` (key `builtinModel`): `requested` after the click, `stored` once the document reports the complete file, `failed` with the error when the download did not work; no record means the file is missing. A file that is in the storage without a record (downloaded by an earlier version) is found when the panel is opened and used as it is.
-- **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings or that record change. A download that was asked for runs whatever the filter and the AI switch say, and it continues when the panel is closed.
-- **Download.** 1.17 GB from Hugging Face (a pinned revision) into the extension's own storage; it took 76–83 s. The panel shows the percent; pages are filtered by keywords meanwhile. WebGPU is checked first, so a browser without it downloads nothing.
-- **Nothing is downloaded again by itself.** A failed download is shown in the panel with the button, and stays failed after a browser restart. If the browser removes the stored file, the next start notices it, the model is off again and the button is back. Only a download that was interrupted by closing the browser starts again at the next start, from the beginning.
-- **Only as the settings say.** With the filter or the AI model off, **Test** (*Testuj*) does not open the document: it says the built-in model runs only while they are on (`builtinOff`) instead of loading the model. A document opened by a request just as the settings were switched off is closed again at once.
+- **The state of each file** is kept by the service worker in `chrome.storage.local` (key `builtinModels`, one record per model): `requested` after the click, `stored` once the document reports the complete file, `failed` with the error when the download did not work; no record means the file is missing. Each time the panel is opened the records are checked against the storage: a file without a record (downloaded by an earlier version) is used as it is, and a record without a file is dropped.
+- **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings or the records change. A download that was asked for runs whatever the filter and the AI switch say, and it continues when the panel is closed.
+- **Download.** From Hugging Face (a pinned revision) into the extension's own storage; 1.17 GB took 76–83 s. The panel shows the percent; pages are filtered by keywords meanwhile. WebGPU is checked first, so a browser without it downloads nothing.
+- **Nothing is downloaded again by itself.** A failed download is shown in the panel with the button, and stays failed after a browser restart. Choosing another model or another request format cancels a download. If the browser removes a stored file, this is noticed when the panel is opened or at the next start with the filter and the AI model on; the model is off again and the button is back. Only a download that was interrupted by closing the browser, or by reloading the extension, starts again at the next start, from the beginning.
+- **Only as the settings say.** With the filter or the AI model off, **Test** (*Testuj*) does not open the document: for a stored model it says the built-in model runs only while they are on (`builtinOff`) instead of loading it. A document opened by a request just as the settings were switched off is closed again at once.
 - **Later starts** read the file from that storage, without a request to the server. The document opens 0.5 s after the browser starts and the model is ready after 1.0–2.3 s; the first decision or two take 1.4–1.6 s while the weights are read.
 - **No time limit.** The document stays open as long as the settings ask for it. In a test the service worker was stopped after 34 s without events, and the same document, with the model in memory, was still open when the test ended after 150 s.
 - **Closing frees the memory** (see [Memory](#memory)).
@@ -468,10 +490,12 @@ In Brave 156 without a window, driven over the DevTools protocol, with the exten
 | Check | Result |
 | --- | --- |
 | Browser start, nothing else done | document open after 0.5 s, model ready after 1.0–2.3 s |
-| Built-in format selected, model not downloaded | no offscreen document, no request; pages and **Test** get `modelMissing` |
+| Built-in format selected, model not downloaded | no model loaded, no request to the network; pages and **Test** get `modelMissing` |
 | **Download model** with Hugging Face unreachable | error and the button in the panel; nothing retried, also after a browser restart |
 | **Download model** | percent shown in the panel, 76–83 s, then no further request |
-| Stored file deleted behind the extension's back | noticed at the next start; not downloaded again, the button is back |
+| Stored file deleted behind the extension's back | noticed at the next start with the filter and the AI model on; not downloaded again, the button is back |
+| Another model chosen | its own state and size in the panel; the document is closed until that model is downloaded; back to the first model without a download |
+| Another model chosen during a download | the download is cancelled and does not start again when that model is chosen again |
 | Service worker stopped | the model is not loaded again; the next decision took 0.35–0.75 s |
 | AI model switched off | document closed |
 | A page with 6 articles that match no keyword | 3 hidden with *(powód: …, AI – tekst)*, 3 neutral ones shown |
@@ -483,8 +507,9 @@ In Brave 156 without a window, driven over the DevTools protocol, with the exten
 - **Other graphics cards** than Apple's were not tested.
 - **Scores differ from basal-serve's.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
 - **Diluted texts.** A sentence about an accident followed by a long neutral text is judged neutral. basal-serve does the same.
-- **A download cannot be resumed.** Closing the browser, or switching to another request format, during a download starts it from the beginning next time.
-- **Disk space.** The model file (1.17 GB) stays in the extension's storage when you switch the built-in model off or pick another request format, so switching back does not download it again. It is deleted together with the extension; the panel has no button to delete it alone.
+- **A download cannot be resumed.** Closing the browser during a download starts it from the beginning at the next start; choosing another model or request format cancels it, and the next click on **Download model** starts from the beginning.
+- **Disk space.** Every downloaded model file (0.81 and 1.17 GB) stays in the extension's storage when you switch the built-in model off or pick another model or request format, so switching back does not download it again. The files are deleted together with the extension; the panel has no button to delete one.
+- **Memory and speed in the extension** were measured for basal-2.0-mini only ([Speed](#speed), [Memory](#memory)); expect roughly the size of the file on the graphics card for the others.
 
 `vendor/wllama/` is written by `python3 tools/vendor_wllama.py`, which downloads the pinned npm package, checks its SHA-512 and copies the library, its WebAssembly binary and its licence unchanged.
 

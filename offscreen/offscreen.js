@@ -2,32 +2,36 @@
  * ParaBene – offscreen document: the built-in AI model (src/config.js, "Built-in model").
  *
  * The service worker opens this page and keeps it in the background; a service worker itself is
- * stopped after 30 s of inactivity and would load the model again each time. The page keeps the
- * basal decision model with wllama (llama.cpp in WebAssembly, on the GPU through WebGPU) and
- * answers the service worker's messages:
- *   BUILTIN_LOAD      { download } starts loading the stored model file; only with `download: true`
- *                     (the user clicked "Download model") a missing file is downloaded first.
- *                     Returns the current status.
- *   BUILTIN_STATUS    { check } returns the status; with `check: true` also whether the complete
- *                     file is in the storage (`stored`), without loading or downloading anything.
- *   BUILTIN_EVALUATE  { body: <basal request> } → { ok, data: <basal reply> } | { ok: false, error }.
+ * stopped after 30 s of inactivity and would load the model again each time. The page keeps ONE
+ * basal decision model (one of Config.BUILTIN_MODELS, fixed by the first message that names it)
+ * with wllama (llama.cpp in WebAssembly, on the GPU through WebGPU). For another model the
+ * service worker closes the page and opens a new one. Messages from the service worker, each
+ * with `model` (an id):
+ *   BUILTIN_LOAD      { model, download } starts loading the stored model file; only with
+ *                     `download: true` (the user clicked "Download model") a missing file is
+ *                     downloaded first. Returns the current status.
+ *   BUILTIN_STATUS    { model, check } returns the status; with `check: true` also whether the
+ *                     complete file of `model` is in the storage (`stored`), without loading or
+ *                     downloading anything.
+ *   BUILTIN_EVALUATE  { model, body: <basal request> } → { ok, data: <basal reply> } | { ok: false, error }.
  *                     Never downloads.
- * It tells the service worker what it learns about the file (MODEL_STATE: "stored", "missing",
+ * It tells the service worker what it learns about a file (MODEL_STATE: "stored", "missing",
  * "failed"); a page of this kind cannot write chrome.storage itself.
  *
- * Status: idle → loading → ready, with "downloading" (progress 0..1) before "loading" when the file
- * is fetched; "missing" when there is no file and no permission to download; "error" otherwise.
- * Errors are { code, detail }, translated by the panel ("aiError_<code>"):
+ * Status (of this page's model): idle → loading → ready, or idle → downloading (progress 0..1) →
+ * loading → ready when the file may be downloaded; "missing" when there is no file and no
+ * permission to download; "error" otherwise. Errors are { code, detail }, translated by the panel
+ * ("aiError_<code>"):
  *   noWebGPU        the browser gives no GPU adapter (checked before any download),
  *   modelMissing    the model file is not stored and may not be downloaded,
  *   downloadFailed  the download failed (detail: the error's text),
- *   modelLoading    the model is still being downloaded or loaded (detail: percent downloaded),
+ *   modelLoading    the model is still being loaded, or this page holds another model,
  *   modelFailed     loading or a decision failed (detail: the error's text).
  *
  * wllama's decision API takes basal-serve's request (state, questions) but shows the option keys to
  * the model whatever "option_keys" says, so its scores are those of basal-serve asked with visible
- * keys: on 24 Polish texts they differed from the hidden-keys scores by 0.05 on average (0.21 at
- * most), and no decision at the threshold 0.5 changed.
+ * keys: on 24 Polish texts (basal-2.0-mini) they differed from the hidden-keys scores by 0.05 on
+ * average (0.21 at most), and no decision at the threshold 0.5 changed.
  */
 import { Wllama } from '../vendor/wllama/index.js';
 
@@ -37,9 +41,11 @@ const Config = self.ParaBeneConfig;
 const LOAD_WAIT_MS = 10000;
 
 const state = { status: 'idle', progress: 0, error: null };
+let current = null; // this page's model (an entry of Config.BUILTIN_MODELS)
 let wllama = null; // the library object; made once, it also reads the model storage
 let ready = false; // the model is in memory
-let fileStored = false; // the current load attempt has the complete file
+let fileStored = false; // the complete file of `current` is known to be in the storage
+let downloadError = null; // a download that failed on this page is not started again by it
 let loading = null;
 
 function codedError(code, detail) {
@@ -55,7 +61,17 @@ function describeError(err) {
 }
 
 function snapshot() {
-  return { status: state.status, progress: state.progress, error: state.error };
+  return {
+    model: current ? current.id : null,
+    status: state.status,
+    progress: state.progress,
+    error: state.error,
+    stored: fileStored,
+  };
+}
+
+function knownModel(id) {
+  return Config.BUILTIN_MODELS.find((model) => model.id === id) || null;
 }
 
 function library() {
@@ -72,27 +88,26 @@ function library() {
   return wllama;
 }
 
-/** The complete model file in the extension's storage, or null (no network request). */
-async function storedModel() {
-  const models = await library().modelManager.getModels();
-  return models.find((model) => model.url === Config.BUILTIN_MODEL_URL) || null;
+/** The complete file of `model` in the extension's storage, or null (no network request). */
+async function storedFile(model) {
+  const files = await library().modelManager.getModels();
+  return files.find((file) => file.url === model.url) || null;
 }
 
-/** Tells the service worker what is known about the model file (it keeps the record). */
-function report(fileState, error) {
-  chrome.runtime.sendMessage({ type: Config.MSG.MODEL_STATE, state: fileState, error }).catch(() => {});
+/** Tells the service worker what is known about a model's file (it keeps the records). */
+function report(model, fileState, error) {
+  chrome.runtime.sendMessage({ type: Config.MSG.MODEL_STATE, model: model.id, state: fileState, error }).catch(() => {});
 }
 
 async function loadModel(download) {
   const adapter = navigator.gpu ? await navigator.gpu.requestAdapter().catch(() => null) : null;
   if (!adapter) throw codedError('noWebGPU');
 
-  let model = await storedModel();
-  if (!model) {
+  let file = await storedFile(current);
+  if (!file) {
     if (!download) throw codedError('modelMissing');
-    state.status = 'downloading';
     try {
-      model = await library().modelManager.downloadModel(Config.BUILTIN_MODEL_URL, {
+      file = await library().modelManager.downloadModel(current.url, {
         progressCallback: ({ loaded, total }) => {
           state.progress = total > 0 ? loaded / total : 0;
         },
@@ -102,25 +117,30 @@ async function loadModel(download) {
     }
   }
   fileStored = true;
-  report('stored');
+  report(current, 'stored');
 
   state.status = 'loading';
   state.progress = 1;
-  // `model` is the stored file: loading it makes no network request.
-  await library().loadModel(model, {
+  // `file` is the stored file: loading it makes no network request.
+  await library().loadModel(file, {
     n_ctx: Config.BUILTIN_CONTEXT,
     n_threads: 1, // the GPU does the work: measured, more threads do not make a decision faster
   });
 }
 
 /**
- * Loads the model once. `download`: a missing file may be downloaded (the user asked for it).
- * After a failure the next call tries again; nothing here retries by itself.
+ * Loads this page's model once. `download`: a missing file may be downloaded (the user asked for
+ * it). After a failed load the next call tries again; a failed download is never started again by
+ * this page (the service worker opens a new page when the user asks again).
  */
 function ensureLoaded(download) {
   if (ready) return Promise.resolve();
   if (!loading) {
-    state.status = 'loading';
+    if (download && downloadError) {
+      report(current, 'failed', downloadError);
+      return Promise.reject(codedError(downloadError.code, downloadError.detail));
+    }
+    state.status = download ? 'downloading' : 'loading';
     state.progress = 0;
     state.error = null;
     fileStored = false;
@@ -134,13 +154,16 @@ function ensureLoaded(download) {
         loading = null;
         if (error.code === 'modelMissing') {
           state.status = 'missing';
-          report('missing');
+          report(current, 'missing');
         } else {
           state.status = 'error';
           state.error = error;
           console.warn('[ParaBene] Built-in model failed:', err);
           // A download that was asked for and did not produce the file: the user has to ask again.
-          if (download && !fileStored) report('failed', error);
+          if (download && !fileStored) {
+            downloadError = error;
+            report(current, 'failed', error);
+          }
           // A library object whose load failed is not reused.
           if (fileStored && wllama) {
             wllama.exit().catch(() => {});
@@ -173,17 +196,19 @@ async function evaluate(body) {
     }
   }
   const reply = await wllama.createSystemOne(body);
-  reply.model = Config.BUILTIN_MODEL_NAME;
+  reply.model = current.name;
   return reply;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Only the extension's own pages and service worker (content scripts have a tab).
   if (sender.id !== chrome.runtime.id || sender.tab || !message || typeof message.type !== 'string') return false;
+  const types = [Config.MSG.BUILTIN_LOAD, Config.MSG.BUILTIN_STATUS, Config.MSG.BUILTIN_EVALUATE];
+  if (!types.includes(message.type)) return false;
 
-  if (message.type === Config.MSG.BUILTIN_LOAD) {
-    ensureLoaded(message.download === true).catch(() => {});
-    sendResponse({ ok: true, data: snapshot() });
+  const model = knownModel(message.model);
+  if (!model) {
+    sendResponse({ ok: false, error: { code: 'modelFailed', detail: 'unknown model' } });
     return false;
   }
 
@@ -192,19 +217,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: true, data: snapshot() });
       return false;
     }
-    storedModel().then(
-      (model) => sendResponse({ ok: true, data: Object.assign(snapshot(), { stored: Boolean(model) }) }),
+    storedFile(model).then(
+      (file) => sendResponse({ ok: true, data: Object.assign(snapshot(), { checked: model.id, stored: Boolean(file) }) }),
       (err) => sendResponse({ ok: false, error: describeError(err) })
     );
     return true;
   }
 
-  if (message.type === Config.MSG.BUILTIN_EVALUATE) {
-    evaluate(message.body).then(
-      (data) => sendResponse({ ok: true, data }),
-      (err) => sendResponse({ ok: false, error: describeError(err) })
-    );
-    return true;
+  // Loading and deciding: this page keeps the first model it is asked for.
+  if (!current) current = model;
+  const other = current.id !== model.id;
+
+  if (message.type === Config.MSG.BUILTIN_LOAD) {
+    if (!other) ensureLoaded(message.download === true).catch(() => {});
+    sendResponse({ ok: true, data: snapshot() }); // `model` in it tells the service worker which one is here
+    return false;
   }
-  return false;
+
+  if (other) {
+    sendResponse({ ok: false, error: { code: 'modelLoading', detail: '0' } });
+    return false;
+  }
+  evaluate(message.body).then(
+    (data) => sendResponse({ ok: true, data }),
+    (err) => sendResponse({ ok: false, error: describeError(err) })
+  );
+  return true;
 });

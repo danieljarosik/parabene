@@ -27,33 +27,74 @@
    * Built-in model (`aiProtocol: "builtin"`): the basal decision model runs inside the browser, in
    * an offscreen document the service worker opens once and keeps in the background
    * (offscreen/offscreen.js). llama.cpp compiled to WebAssembly (vendor/wllama) runs the GGUF file
-   * on the GPU through WebGPU; there is no CPU fallback (a decision takes 4–20 s on the CPU).
-   * The model file (1.17 GB) comes from Hugging Face (a pinned revision) and is kept in the
-   * extension's own storage; page text never leaves the browser. It is downloaded only when the
-   * user clicks "Download model" in the panel; until the file is stored the built-in model is off
-   * and keywords are used (see BUILTIN_STORAGE_KEY). It asks the same question as the basal
-   * protocol, so sensitivity and topics apply.
-   * Measured on an Apple M4 Pro: 0.33 s for a short text, 0.53 s for 500 characters, 1.2 s for
-   * 2,000; decisions are made one at a time, hence the generous timeout.
+   * on the GPU through WebGPU; there is no CPU fallback (a decision takes 6–20 s on the CPU).
+   * The user picks the model (`aiModel`) from BUILTIN_MODELS. Its file comes from Hugging Face (a
+   * pinned revision) and is kept in the extension's own storage; page text never leaves the
+   * browser. A file is downloaded only when the user clicks "Download model" in the panel; until
+   * the file of the chosen model is stored the built-in model is off and keywords are used (see
+   * BUILTIN_STORAGE_KEY). It asks the same question as the basal protocol, so sensitivity and
+   * topics apply. Decisions are made one at a time, hence the generous timeout.
    */
-  const BUILTIN_MODEL_NAME = 'basal-2.0-mini-Q5_K_M';
-  const BUILTIN_MODEL_URL =
-    'https://huggingface.co/Remek/basal-2.0-mini-GGUF/resolve/b6b79ac00da308d93b39c6ca500792ce2ee83a6f/' +
-    'basal-2.0-mini-Q5_K_M-decision.gguf';
+
+  /**
+   * The models the built-in format can run: only files that carry basal's decision metadata
+   * ("-decision.gguf") and that were loaded and measured in the browser. `url` pins a revision,
+   * `bytes` is the file size (shown in the panel), `note` the message with a hint for choosing.
+   * Measured on an Apple M4 Pro (WebGPU), one decision for a text of ~100 / 500 / 2,000 characters:
+   *   basal-omni-pico   0.17 / 0.29 / 0.64 s   (0.8B; text only, like every GGUF port)
+   *   basal-2.0-mini    0.33 / 0.53 / 1.18 s   (1.5B)
+   * Left out: basal-2.0-mini Q8_0 (1.70 GB; the same verdicts and times as Q5_K_M) and
+   * basal-2.0-4.5B Q5_K_M (3.42 GB; it works, but 0.93 / 1.50 / 3.45 s: twenty tiles take 30 s,
+   * the whole timeout).
+   * The ids are stored in the settings: do not rename them.
+   */
+  const HF = 'https://huggingface.co/Remek/';
+  const BUILTIN_MODELS = Object.freeze(
+    [
+      {
+        id: 'basal-omni-pico-q8',
+        name: 'basal-omni-pico (Q8_0)',
+        bytes: 812839616,
+        note: 'aiModelNote_pico',
+        url: `${HF}basal-omni-pico-GGUF/resolve/f13a8cd528e446dc705131373371e0755e3ad1cf/basal-omni-pico-Q8_0-decision.gguf`,
+      },
+      {
+        id: 'basal-2.0-mini-q5',
+        name: 'basal-2.0-mini (Q5_K_M)',
+        bytes: 1168139424,
+        note: 'aiModelNote_mini',
+        url: `${HF}basal-2.0-mini-GGUF/resolve/b6b79ac00da308d93b39c6ca500792ce2ee83a6f/basal-2.0-mini-Q5_K_M-decision.gguf`,
+      },
+    ].map(Object.freeze)
+  );
+  const DEFAULT_BUILTIN_MODEL = 'basal-2.0-mini-q5';
+
+  function isBuiltinModel(id) {
+    return BUILTIN_MODELS.some((model) => model.id === id);
+  }
+
+  /** The model with this id, or the default one for an unknown id. */
+  function builtinModel(id) {
+    return BUILTIN_MODELS.find((model) => model.id === id) || BUILTIN_MODELS.find((model) => model.id === DEFAULT_BUILTIN_MODEL);
+  }
+
   const BUILTIN_PAGE = 'offscreen/offscreen.html';
   const BUILTIN_TIMEOUT_MS = 30000;
   /** Tokens of context: 2,000 characters of Polish text are ~500 tokens with the question. */
   const BUILTIN_CONTEXT = 4096;
 
   /**
-   * What the service worker knows about the model file, in chrome.storage.local:
-   * { url, state, error? }, valid only for the current BUILTIN_MODEL_URL. No record = "missing".
+   * What the service worker knows about the model files, in chrome.storage.local: an object
+   * { <model id>: { url, state, error? } }; a record counts only while its `url` is the model's
+   * current one. No record = "missing".
    * - requested: the user clicked "Download model"; the offscreen document may download the file,
    * - stored:    the offscreen document found the complete file in its storage; the model is used,
    * - failed:    the download (or the check for WebGPU before it) failed, with `error`; the user
    *              has to click again — nothing is downloaded again by itself.
+   * Only the chosen model of the built-in format can be "requested": choosing another model or
+   * another request format cancels a download.
    */
-  const BUILTIN_STORAGE_KEY = 'builtinModel';
+  const BUILTIN_STORAGE_KEY = 'builtinModels';
   const BUILTIN_STATES = Object.freeze(['requested', 'stored', 'failed']);
 
   /** Protocols that ask the basal question (sensitivity and topics apply to them). */
@@ -191,6 +232,7 @@
     aiEnabled: false,
     aiEndpoint: DEFAULT_ENDPOINT,
     aiProtocol: DEFAULT_PROTOCOL,
+    aiModel: DEFAULT_BUILTIN_MODEL,
     aiMode: DEFAULT_AI_MODE,
     aiSensitivity: DEFAULT_AI_SENSITIVITY,
     aiTopics: DEFAULT_AI_TOPICS,
@@ -221,7 +263,7 @@
     MODEL_DOWNLOAD: 'parabene:modelDownload',
     // offscreen document → service worker: the file is stored / missing / could not be downloaded
     MODEL_STATE: 'parabene:modelState',
-    // service worker → offscreen document (the built-in model)
+    // service worker → offscreen document (the built-in model); each names the model by id
     BUILTIN_LOAD: 'parabene:builtin:load',
     BUILTIN_STATUS: 'parabene:builtin:status',
     BUILTIN_EVALUATE: 'parabene:builtin:evaluate',
@@ -321,6 +363,7 @@
     PARABENE_AI_ENABLED: 'aiEnabled',
     PARABENE_AI_PROTOCOL: 'aiProtocol',
     PARABENE_AI_ENDPOINT: 'aiEndpoint',
+    PARABENE_AI_MODEL: 'aiModel',
     PARABENE_AI_MODE: 'aiMode',
     PARABENE_AI_SENSITIVITY: 'aiSensitivity',
     PARABENE_AI_TOPICS: 'aiTopics',
@@ -363,6 +406,8 @@
         ignored.push(name);
       } else if ((key === 'aiEndpoint' || key === 'aiImagesEndpoint') && !isValidEndpoint(value)) {
         ignored.push(name);
+      } else if (key === 'aiModel' && !isBuiltinModel(value)) {
+        ignored.push(name);
       } else if (key === 'aiMode' && !isSupportedMode(value)) {
         ignored.push(name);
       } else if (key === 'aiSensitivity' && !isSupportedSensitivity(value)) {
@@ -397,6 +442,7 @@
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
       aiProtocol: isSupportedProtocol(s.aiProtocol) ? s.aiProtocol : DEFAULT_PROTOCOL,
+      aiModel: isBuiltinModel(s.aiModel) ? s.aiModel : DEFAULT_BUILTIN_MODEL,
       aiMode: isSupportedMode(s.aiMode) ? s.aiMode : DEFAULT_AI_MODE,
       aiSensitivity: isSupportedSensitivity(s.aiSensitivity) ? s.aiSensitivity : DEFAULT_AI_SENSITIVITY,
       aiTopics: Array.isArray(s.aiTopics) ? sanitizeTopics(s.aiTopics) : [...DEFAULT_AI_TOPICS],
@@ -442,8 +488,10 @@
     DEFAULT_PROTOCOL,
     DEFAULT_ENDPOINTS,
     BASAL_PATH,
-    BUILTIN_MODEL_NAME,
-    BUILTIN_MODEL_URL,
+    BUILTIN_MODELS,
+    DEFAULT_BUILTIN_MODEL,
+    isBuiltinModel,
+    builtinModel,
     BUILTIN_PAGE,
     BUILTIN_TIMEOUT_MS,
     BUILTIN_CONTEXT,

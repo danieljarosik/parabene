@@ -19,7 +19,7 @@ content script  →  service worker  →  offscreen/offscreen.js  →  vendor/wl
 
 - The service worker opens the offscreen document, with the request format `builtin`, while the model file is stored and both the filter and the AI model are on, or while a download the user asked for runs.
 - `offscreen.js` creates one `Wllama` object, looks for the stored model file with `modelManager.getModels()`, downloads it with `modelManager.downloadModel()` only when the user asked for that, loads it with `loadModel()` and answers each request with `createSystemOne()`, wllama's decision API.
-- Nothing else imports this directory. With the request formats `simple` and `basal`, or with the AI model off, the files are never loaded.
+- Nothing else imports this directory. With the request formats `simple` and `basal` the files are never loaded. With `builtin` and the AI model off, the document is opened only for a moment when the panel asks whether a model file is in the storage, or while a download runs.
 
 Removing this directory breaks only the built-in model: its requests fail and pages are filtered by keywords.
 
@@ -32,13 +32,13 @@ Removing this directory breaks only the built-in model: its requests fail and pa
 | `LICENCE` | 1 KB | wllama's MIT licence. |
 | `VERSION.json` | 1 KB | Where the files came from: package, version, tarball address, its SHA-512 and the SHA-256 of each file. |
 
-The model itself (1.17 GB) is not here. `offscreen.js` downloads it from Hugging Face into the extension's own storage, once, and only after the user has clicked **Download model** in the panel.
+The models themselves (0.81 and 1.17 GB, listed in `src/config.js`) are not here. `offscreen.js` downloads the chosen one from Hugging Face into the extension's own storage, once, and only after the user has clicked **Download model** in the panel.
 
 ## Do not edit
 
 The three files are byte-for-byte those of the npm package `@wllama/wllama` 3.13.0. Keep them that way: anyone can then check them against `VERSION.json` or against the package.
 
-To change the version, edit `VERSION`, `TARBALL` and `SHA512` in [`tools/vendor_wllama.py`](../../tools/vendor_wllama.py) and run:
+To change the version, edit `VERSION` and `SHA512` in [`tools/vendor_wllama.py`](../../tools/vendor_wllama.py) and run:
 
 ```bash
 python3 tools/vendor_wllama.py

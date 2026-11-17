@@ -87,8 +87,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === Config.MSG.MODEL_STATE && isBuiltinDocument(sender)) {
-    builtinTask(() => recordBuiltinState(message.state, message.error));
+  if (message.type === Config.MSG.MODEL_STATE && isBuiltinDocument(sender) && Config.isBuiltinModel(message.model)) {
+    builtinTask(() => recordBuiltinState(Config.builtinModel(message.model), message.state, message.error));
     return false;
   }
 
@@ -162,12 +162,13 @@ async function getMessages(locale) {
 async function classify(text, test = false) {
   let endpoint = '';
   try {
-    const { enabled, aiEnabled, aiEndpoint, aiProtocol, aiSensitivity, aiTopics } = await Config.load();
+    const { enabled, aiEnabled, aiEndpoint, aiProtocol, aiModel, aiSensitivity, aiTopics } = await Config.load();
     if (!test && !(enabled && aiEnabled)) throw Evaluators.cancelledError();
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
     if (aiProtocol === 'builtin') {
-      // Without the model file nothing is asked and nothing is downloaded: the user downloads it in the panel.
-      const record = await builtinRecord();
+      // Without the chosen model's file nothing is asked and nothing is downloaded: the user downloads it in the panel.
+      const model = Config.builtinModel(aiModel);
+      const record = await builtinRecord(model);
       if (record.state === 'requested') {
         const { progress } = await builtinStatus();
         throw Evaluators.codedError('modelLoading', 'model is being downloaded', String(Math.floor((progress || 0) * 100)));
@@ -177,7 +178,7 @@ async function classify(text, test = false) {
       // filter or the AI model off would load it, and the next start of the service worker would
       // close the document again.
       if (!(enabled && aiEnabled)) throw Evaluators.codedError('builtinOff', 'the built-in model is off');
-      const reply = await builtinTransport(Evaluators.basalRequest(input, aiTopics));
+      const reply = await builtinTransport(model, Evaluators.basalRequest(input, aiTopics));
       const threshold = Config.AI_SENSITIVITIES[aiSensitivity];
       const data = Evaluators.parseBasalResponse(reply, { threshold, topics: aiTopics });
       return { ok: true, data: Object.assign(data, { threshold }) };
@@ -214,15 +215,21 @@ async function classify(text, test = false) {
  * The model lives in an offscreen document (offscreen/offscreen.js), not here: a service worker
  * is stopped after 30 s without events and would have to load the model again.
  *
+ * The user picks one of Config.BUILTIN_MODELS (`aiModel`); the document holds one model at a time
+ * and is closed and opened again for another one.
+ *
  * Nothing is downloaded until the user clicks "Download model" in the panel. What is known about
- * the model file is kept in chrome.storage.local (Config.BUILTIN_STORAGE_KEY): "requested" after
- * that click, "stored" once the document reports the complete file, "failed" when the download
- * did not work; no record means "missing". With the "builtin" request format the document is open
- *  - while a requested download runs, whatever the other switches say, and
+ * each model's file is kept in chrome.storage.local (Config.BUILTIN_STORAGE_KEY): "requested"
+ * after that click, "stored" once the document reports the complete file, "failed" when the
+ * download did not work; no record means "missing". With the "builtin" request format the
+ * document is open, for the chosen model,
+ *  - while a requested download runs, whatever the filter and the AI switch say, and
  *  - while the file is stored and both the filter and the AI model are on;
- * otherwise it is closed, which frees the model's memory. This is checked on every start of the
- * service worker (so also when the browser starts and when the extension is installed or
- * reloaded) and when the settings or the record change.
+ * otherwise it is closed, which frees the model's memory (it is also opened for a moment when the
+ * panel asks whether a file is in the storage: builtinStatus). Choosing another model or another
+ * request format cancels a download. This is checked on every start of the service worker (so also
+ * when the browser starts and when the extension is installed or reloaded) and when the settings
+ * or the records change.
  */
 let builtinOpening = null;
 /** A message to a document that is not listening yet is sent again this many times, 100 ms apart. */
@@ -297,45 +304,71 @@ function isBuiltinDocument(sender) {
   return !sender.tab && sender.url === chrome.runtime.getURL(Config.BUILTIN_PAGE);
 }
 
-/** The record about the model file: { state: "missing" | "requested" | "stored" | "failed", error? }. */
-async function builtinRecord() {
+/** All records: { <model id>: { url, state, error? } }. */
+async function builtinRecords() {
   const key = Config.BUILTIN_STORAGE_KEY;
-  const record = (await chrome.storage.local.get(key))[key];
-  const valid = record && record.url === Config.BUILTIN_MODEL_URL && Config.BUILTIN_STATES.includes(record.state);
+  const records = (await chrome.storage.local.get(key))[key];
+  return records && typeof records === 'object' && !Array.isArray(records) ? records : {};
+}
+
+/** The record about a model's file: { state: "missing" | "requested" | "stored" | "failed", error? }. */
+async function builtinRecord(model) {
+  const record = (await builtinRecords())[model.id];
+  const valid = record && record.url === model.url && Config.BUILTIN_STATES.includes(record.state);
   return valid ? record : { state: 'missing' };
 }
 
-async function writeBuiltinRecord(state, error) {
-  const key = Config.BUILTIN_STORAGE_KEY;
-  if (state === 'missing') return chrome.storage.local.remove(key);
-  const record = { url: Config.BUILTIN_MODEL_URL, state };
-  if (error && typeof error.code === 'string') record.error = { code: error.code, detail: error.detail };
-  return chrome.storage.local.set({ [key]: record });
+/** Writes a model's record ("missing" removes it). Call only from a builtinTask: it reads, then writes. */
+async function writeBuiltinRecord(model, state, error) {
+  const records = await builtinRecords();
+  if (state === 'missing') {
+    if (!(model.id in records)) return;
+    delete records[model.id];
+  } else {
+    records[model.id] = { url: model.url, state };
+    if (error && typeof error.code === 'string') records[model.id].error = { code: error.code, detail: error.detail };
+  }
+  await chrome.storage.local.set({ [Config.BUILTIN_STORAGE_KEY]: records });
 }
 
 /**
- * What the offscreen document found out about the file. Only these steps are taken:
+ * What the offscreen document found out about a model's file. Only these steps are taken:
  * anything → stored; stored → missing (the browser has removed the file); requested → failed.
  * A "missing" or "failed" report never cancels a download the user asked for or a stored file.
+ * Call only from a builtinTask.
  */
-async function recordBuiltinState(state, error) {
-  const current = (await builtinRecord()).state;
-  if (state === 'stored' && current !== 'stored') await writeBuiltinRecord('stored');
-  else if (state === 'missing' && current === 'stored') await writeBuiltinRecord('missing');
-  else if (state === 'failed' && current === 'requested') await writeBuiltinRecord('failed', error);
+async function recordBuiltinState(model, state, error) {
+  const current = (await builtinRecord(model)).state;
+  if (state === 'stored' && current !== 'stored') await writeBuiltinRecord(model, 'stored');
+  else if (state === 'missing' && current === 'stored') await writeBuiltinRecord(model, 'missing');
+  else if (state === 'failed' && current === 'requested') await writeBuiltinRecord(model, 'failed', error);
 }
 
 /** Opens the document and starts the download or the load, or closes the document (see above). */
 function syncBuiltin() {
   return builtinTask(async () => {
-    const { enabled, aiEnabled, aiProtocol } = await Config.load();
-    const { state } = await builtinRecord();
+    const { enabled, aiEnabled, aiProtocol, aiModel } = await Config.load();
+    const model = Config.builtinModel(aiModel);
+    // A download belongs to the chosen model of the built-in format: choosing another model or
+    // format cancels it, so it does not start again by itself when the user comes back.
+    for (const other of Config.BUILTIN_MODELS) {
+      if (aiProtocol === 'builtin' && other.id === model.id) continue;
+      if ((await builtinRecord(other)).state === 'requested') await writeBuiltinRecord(other, 'missing');
+    }
+    const { state } = await builtinRecord(model);
     const wanted = aiProtocol === 'builtin' && (state === 'requested' || (state === 'stored' && enabled && aiEnabled));
-    if (wanted) {
-      await openBuiltin();
-      await sendBuiltin({ type: Config.MSG.BUILTIN_LOAD, download: state === 'requested' });
-    } else if (await hasBuiltinDocument()) {
+    if (!wanted) {
+      if (await hasBuiltinDocument()) await chrome.offscreen.closeDocument();
+      return;
+    }
+    const load = { type: Config.MSG.BUILTIN_LOAD, model: model.id, download: state === 'requested' };
+    await openBuiltin();
+    const reply = await sendBuiltin(load);
+    if (reply && reply.ok && reply.data.model !== model.id) {
+      // The document holds another model: a new document for this one.
       await chrome.offscreen.closeDocument();
+      await openBuiltin();
+      await sendBuiltin(load);
     }
   });
 }
@@ -343,52 +376,68 @@ function syncBuiltin() {
 chrome.runtime.onStartup.addListener(syncBuiltin);
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (['enabled', 'aiEnabled', 'aiProtocol', Config.BUILTIN_STORAGE_KEY].some((key) => key in changes)) syncBuiltin();
+  const keys = ['enabled', 'aiEnabled', 'aiProtocol', 'aiModel', Config.BUILTIN_STORAGE_KEY];
+  if (keys.some((key) => key in changes)) syncBuiltin();
 });
 syncBuiltin(); // every start of the service worker, including install and reload
 
-/** The panel's "Download model": remembers the request; syncBuiltin then starts the download. */
+/** The panel's "Download model": remembers the request for the chosen model; syncBuiltin then starts the download. */
 async function requestBuiltinDownload() {
   await builtinTask(async () => {
-    if ((await builtinRecord()).state !== 'stored') await writeBuiltinRecord('requested');
+    const { aiProtocol, aiModel } = await Config.load();
+    const model = Config.builtinModel(aiModel);
+    if (aiProtocol === 'builtin' && (await builtinRecord(model)).state !== 'stored') await writeBuiltinRecord(model, 'requested');
   });
   await syncBuiltin();
-  return builtinStatus();
 }
 
 /**
- * For the panel: { status, progress?, error? } with status
- * "missing" | "downloading" | "loading" | "ready" | "stored" (on disk, not in memory) | "error".
- * With no record, the document is asked once whether the file is in the storage after all (a file
- * downloaded by an earlier version, or a record lost with the settings): it is then used as it is.
+ * For the panel, about the chosen model: { model, status, progress?, error?, stored? } with status
+ * "missing" | "downloading" | "loading" | "ready" | "stored" (on disk, not in memory) | "error"
+ * (`stored`: the file is there, so the error is not about the download).
+ * The records are checked against the document: an open document is asked for its state; with no
+ * document and no download running, one is opened for a moment to ask whether the file is in the
+ * storage — a file without a record (downloaded by an earlier version, or a record lost with the
+ * settings) is then used as it is, and a record without a file (removed by the browser) is dropped.
  */
 async function builtinStatus() {
   let live = null;
+  let model = null;
   await builtinTask(async () => {
-    const { aiProtocol } = await Config.load();
+    const { aiProtocol, aiModel } = await Config.load();
+    model = Config.builtinModel(aiModel);
     if (await hasBuiltinDocument()) {
-      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS });
-      live = reply && reply.ok ? reply.data : null;
-    } else if (aiProtocol === 'builtin' && (await builtinRecord()).state === 'missing') {
+      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: model.id });
+      if (!reply || !reply.ok || reply.data.model !== model.id) return;
+      live = reply.data;
+      // The document's reports (MODEL_STATE) are not acknowledged: take the same facts from its status.
+      if (live.stored) await recordBuiltinState(model, 'stored');
+      else if (live.status === 'error') await recordBuiltinState(model, 'failed', live.error);
+    } else if (aiProtocol === 'builtin' && ['missing', 'stored'].includes((await builtinRecord(model)).state)) {
       await openBuiltin();
-      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, check: true });
-      if (reply && reply.ok && reply.data.stored) await writeBuiltinRecord('stored');
+      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: model.id, check: true });
+      if (reply && reply.ok) await recordBuiltinState(model, reply.data.stored ? 'stored' : 'missing');
     }
   });
-  await syncBuiltin(); // closes a document that was opened only to look, opens one that is now wanted
-  const record = await builtinRecord();
+  // No document answered: close one opened only to look, or open one that is wanted.
+  if (!live) await syncBuiltin();
+  const record = await builtinRecord(model);
+  const stored = record.state === 'stored';
+  const about = { model: model.id };
   if (live && ['downloading', 'loading', 'ready'].includes(live.status)) {
-    return { status: live.status, progress: live.progress };
+    return Object.assign(about, { status: live.status, progress: live.progress });
   }
-  if (live && live.status === 'error') return { status: 'error', error: live.error };
-  if (record.state === 'stored') return { status: 'stored' };
-  if (record.state === 'requested') return { status: 'downloading', progress: 0 };
-  if (record.state === 'failed') return { status: 'error', error: record.error || { code: 'downloadFailed' } };
-  return { status: 'missing' };
+  if (live && live.status === 'error') return Object.assign(about, { status: 'error', error: live.error, stored });
+  if (stored) return Object.assign(about, { status: 'stored' });
+  if (record.state === 'requested') return Object.assign(about, { status: 'downloading', progress: 0 });
+  if (record.state === 'failed') {
+    return Object.assign(about, { status: 'error', error: record.error || { code: 'downloadFailed' }, stored: false });
+  }
+  return Object.assign(about, { status: 'missing' });
 }
 
 /** Asks the model in the offscreen document; resolves with its basal reply. */
-async function builtinTransport(body) {
+async function builtinTransport(model, body) {
   // Normally syncBuiltin has opened the document. One opened here (the service worker has just
   // started, or the settings were switched off after this request was checked) is checked
   // against the settings again, so it is not left open when they no longer ask for it.
@@ -403,7 +452,7 @@ async function builtinTransport(body) {
   });
   try {
     const response = await Promise.race([
-      sendBuiltin({ type: Config.MSG.BUILTIN_EVALUATE, body }),
+      sendBuiltin({ type: Config.MSG.BUILTIN_EVALUATE, model: model.id, body }),
       timeout,
     ]);
     if (!response || !response.ok) {

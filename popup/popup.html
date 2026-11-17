@@ -94,9 +94,12 @@
             <option value="builtin" data-i18n="aiProtocol_builtin"></option>
           </select>
           <div class="model" id="ai-model" hidden>
+            <label class="ai__label" for="ai-model-select" data-i18n="aiModelLabel"></label>
+            <select id="ai-model-select" class="input ai__select"></select>
+            <p class="hint" id="ai-model-note"></p>
             <p class="hint model__status" id="ai-model-status" role="status"></p>
-            <progress class="model__progress" id="ai-model-progress" max="100" value="0" hidden></progress>
-            <button type="button" class="btn btn--primary" id="ai-model-download" data-i18n="aiModelDownload" hidden></button>
+            <progress class="model__progress" id="ai-model-progress" max="100" value="0" aria-labelledby="ai-model-status" hidden></progress>
+            <button type="button" class="btn btn--primary" id="ai-model-download" hidden></button>
             <p class="hint" data-i18n="aiBuiltinHint"></p>
           </div>
           <label class="ai__label" for="ai-endpoint" id="ai-endpoint-label" data-i18n="aiEndpointLabel"></label>

@@ -301,13 +301,45 @@
     "message": "When the model does not respond, ParaBene automatically falls back to keywords.",
     "description": "Help text under the endpoint input."
   },
+  "aiModelLabel": {
+    "message": "Model",
+    "description": "Label of the picker of the built-in model."
+  },
+  "aiModelOption": {
+    "message": "$name$ — $size$ GB",
+    "description": "Option of the built-in model picker: the model name (not translated) and the size of its file.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.0-mini (Q5_K_M)"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.2"
+      }
+    }
+  },
+  "aiModelNote_pico": {
+    "message": "The smallest and fastest: about 0.2 s for a short text.",
+    "description": "Hint under the model picker for basal-omni-pico (time measured on an Apple M4 Pro)."
+  },
+  "aiModelNote_mini": {
+    "message": "The default: about 0.3 s for a short text.",
+    "description": "Hint under the model picker for basal-2.0-mini (time measured on an Apple M4 Pro)."
+  },
   "aiModelMissing": {
     "message": "The model is not downloaded. Until you download it, the built-in model is off and pages are filtered by keywords.",
     "description": "Built-in model: the model file is not in the storage of the extension yet."
   },
   "aiModelDownload": {
-    "message": "Download model (1.2 GB)",
-    "description": "Button that starts the download of the file of the built-in model."
+    "message": "Download model ($size$ GB)",
+    "description": "Button that starts the download of the file of the chosen built-in model; the placeholder is its size.",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "1.2"
+      }
+    }
   },
   "aiModelDownloading": {
     "message": "Downloading the model: $percent$%. You can close this panel.",
@@ -337,8 +369,18 @@
       }
     }
   },
+  "aiModelStoredFailed": {
+    "message": "The model is downloaded but does not work: $error$",
+    "description": "Built-in model: the file is stored but loading it failed; the placeholder is one of the aiError_* messages.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "this browser provides no WebGPU (graphics card)"
+      }
+    }
+  },
   "aiBuiltinHint": {
-    "message": "The model runs in your browser on the graphics card (WebGPU). The model file (about 1.2 GB) is downloaded from Hugging Face only when you click “Download model”; page text never leaves the browser.",
+    "message": "The model runs in your browser on the graphics card (WebGPU). Its file is downloaded from Hugging Face only when you click “Download model”; page text never leaves the browser.",
     "description": "Help text shown when the built-in model is selected (Hugging Face is the name of the site the model file comes from)."
   },
   "aiErrorInvalidUrl": {
