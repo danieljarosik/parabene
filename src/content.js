@@ -32,8 +32,13 @@
   const ATTR_SHOWN = 'data-parabene-shown';
   /** Pending example id of revealed content, or the ids of the examples that let content through. */
   const ATTR_LEARN = 'data-parabene-learn';
-  /** On a visible container with a bar whose children form a horizontal flex row (a Facebook comment). */
+  /**
+   * On a visible container with a bar whose children form a horizontal flex row (a Facebook comment):
+   * "static" when CSS has to position the container for the bar, "positioned" otherwise.
+   */
   const ATTR_ROW = 'data-parabene-row';
+  /** Custom properties set on such a container: its own padding and the height of its bar. */
+  const ROW_VARS = ['--parabene-row-top', '--parabene-row-left', '--parabene-row-right', '--parabene-row-bar'];
   const CLASS_HIDDEN = 'parabene-hidden';
   const CLASS_SHOWN = 'parabene-shown';
   const CLASS_BAR = 'parabene-bar';
@@ -152,6 +157,8 @@
       observer: null,
       seen: new WeakSet(),
     },
+    /** ResizeObserver of the bars above horizontal flex rows (see layoutRow). */
+    rowBars: null,
   };
 
   function emptyCounts() {
@@ -757,10 +764,47 @@
     else el.removeAttribute(name);
   }
 
-  /** Whether the container lays its children out in a horizontal flex row. */
-  function isFlexRow(el) {
+  /**
+   * Visible content in a horizontal flex row (a Facebook comment: avatar beside the text). A bar
+   * inside the row would sit beside the content and squeeze it, and letting the row wrap would also
+   * push a long text below the avatar. So the bar leaves the row: CSS places it in room added above
+   * the content, and the row keeps its own layout. Other layouts and hidden content are left as they are.
+   */
+  function layoutRow(el, bar, visible) {
+    // Removed first, so the computed style shows the container's own padding and position.
+    el.removeAttribute(ATTR_ROW);
     const style = getComputedStyle(el);
-    return style.display.endsWith('flex') && style.flexDirection.startsWith('row');
+    if (!visible || !style.display.endsWith('flex') || !style.flexDirection.startsWith('row')) {
+      clearRow(el, bar);
+      return;
+    }
+    el.style.setProperty('--parabene-row-top', style.paddingTop);
+    el.style.setProperty('--parabene-row-left', style.paddingLeft);
+    el.style.setProperty('--parabene-row-right', style.paddingRight);
+    el.setAttribute(ATTR_ROW, style.position === 'static' ? 'static' : 'positioned');
+    // The room above the content follows the bar's height, which changes as its text wraps.
+    if (!state.rowBars) state.rowBars = new ResizeObserver(onRowBarResize);
+    state.rowBars.observe(bar);
+  }
+
+  function clearRow(el, bar) {
+    el.removeAttribute(ATTR_ROW);
+    for (const name of ROW_VARS) el.style.removeProperty(name);
+    if (el.getAttribute('style') === '') el.removeAttribute('style');
+    if (bar && state.rowBars) state.rowBars.unobserve(bar);
+  }
+
+  function onRowBarResize(entries) {
+    for (const { target: bar, borderBoxSize } of entries) {
+      const el = bar.parentElement;
+      if (!el || !el.hasAttribute(ATTR_ROW)) {
+        state.rowBars.unobserve(bar);
+        continue;
+      }
+      // 0 while the bar is not rendered (e.g. the page took the comment out): keep the last height.
+      const height = borderBoxSize[0].blockSize;
+      if (height) el.style.setProperty('--parabene-row-bar', `${height}px`);
+    }
   }
 
   /** "keyword" | "ai" for a hidden container, null when it is not hidden. */
@@ -826,9 +870,7 @@
     setOrRemoveAttribute(el, ATTR_MEDIA, result.media);
     setOrRemoveAttribute(el, ATTR_SHOWN, kind === 'hidden' ? '' : kind);
     if (learn !== undefined) setOrRemoveAttribute(el, ATTR_LEARN, learn);
-    // In a horizontal flex row (a Facebook comment: avatar beside the text) a bar above visible
-    // content would sit beside it and squeeze it to a narrow strip; CSS gives the bar its own line.
-    setOrRemoveAttribute(el, ATTR_ROW, kind !== 'hidden' && isFlexRow(el) ? 'true' : '');
+    layoutRow(el, bar, kind !== 'hidden');
     el.classList.toggle(CLASS_HIDDEN, kind === 'hidden');
     el.classList.toggle(CLASS_SHOWN, kind !== 'hidden');
     const current = countedKind(el);
@@ -850,6 +892,7 @@
   function unhide(el) {
     countHidden(countedKind(el), -1);
     const bar = directBar(el);
+    clearRow(el, bar);
     if (bar) bar.remove();
     el.removeAttribute(ATTR_REASON);
     el.removeAttribute(ATTR_SOURCE);
@@ -857,7 +900,6 @@
     el.removeAttribute(ATTR_MEDIA);
     el.removeAttribute(ATTR_SHOWN);
     el.removeAttribute(ATTR_LEARN);
-    el.removeAttribute(ATTR_ROW);
     el.classList.remove(CLASS_HIDDEN, CLASS_SHOWN);
     if (state.learning.observer) state.learning.observer.unobserve(el);
   }
@@ -1226,6 +1268,7 @@
     if (state.images.observer) state.images.observer.disconnect();
     clearTimeout(state.images.retryTimer);
     if (state.learning.observer) state.learning.observer.disconnect();
+    if (state.rowBars) state.rowBars.disconnect();
     if (state.observer) {
       state.observer.disconnect();
       state.observer = null;

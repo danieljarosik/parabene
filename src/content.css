@@ -145,19 +145,25 @@
 
 /*
  * Visible content in a horizontal flex row (data-parabene-row, set by the content script; e.g. a
- * Facebook comment with the avatar beside the text). The bar takes a line of its own above the
- * content, which keeps its row layout below; without this the bar sits in the row and squeezes
- * the content to a narrow strip. Hidden containers and other layouts are not affected.
+ * Facebook comment with the avatar beside the text). The bar leaves the row and sits in room added
+ * above the content, so the row keeps its own layout: in the row the bar would squeeze the content,
+ * and a wrapping row would also push a long text below the avatar. The content script keeps the
+ * container's own padding in --parabene-row-top/-left/-right and the bar's height in
+ * --parabene-row-bar; 8px are the bar's vertical margins. Hidden containers and other layouts are
+ * not affected.
  */
 .parabene-shown[data-parabene-row] {
-  flex-wrap: wrap !important;
-  align-content: flex-start !important;
+  padding-top: calc(var(--parabene-row-top, 0px) + var(--parabene-row-bar, 0px) + 8px) !important;
+}
+
+.parabene-shown[data-parabene-row="static"] {
+  position: relative !important;
 }
 
 .parabene-shown[data-parabene-row] > .parabene-bar {
-  flex: 0 0 100% !important;
-}
-
-.parabene-shown[data-parabene-row] > :not(.parabene-bar) {
-  min-width: 0 !important;
+  position: absolute !important;
+  top: var(--parabene-row-top, 0px) !important;
+  left: var(--parabene-row-left, 0px) !important;
+  right: var(--parabene-row-right, 0px) !important;
+  width: auto !important;
 }
