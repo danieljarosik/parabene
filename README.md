@@ -372,7 +372,7 @@ flowchart LR
 ```
 
 - **What runs.** [basal-2.0-mini](https://huggingface.co/Remek/basal-2.0-mini-GGUF) as a GGUF file (`Q5_K_M`, 1.17 GB), by llama.cpp compiled to WebAssembly ([wllama](https://github.com/ngxson/wllama)), on the graphics card through WebGPU. It answers the same question as [basal-serve](#basal-serve-v1basal), so **Sensitivity** and **Hidden topics** apply. The prompt and the calibration are not rewritten in JavaScript: wllama has a decision API (`createSystemOne`), and the `-decision.gguf` variant of the model file carries the metadata it needs.
-- **Requirements.** A browser with WebGPU. Tested on Apple Silicon only (M4 Pro; the extension in Brave 156, the model on a plain page also in Chrome 157). There is no CPU fallback (see [Speed](#speed)). Without WebGPU, **Test** (*Testuj*) says so and keywords are used.
+- **Requirements.** A browser with WebGPU. Tested on macOS with Apple Silicon: the extension loaded unpacked in Chrome (checked by hand) and in Brave 156 (M4 Pro, scripted measurements). There is no CPU fallback (see [Speed](#speed)). Without WebGPU, **Test** (*Testuj*) says so and keywords are used.
 - **Pictures** are not judged by the built-in model; [image evaluation](#image-evaluation-basal-omni) still needs its own server.
 
 #### How a decision travels
@@ -468,7 +468,7 @@ In Brave 156 without a window, driven over the DevTools protocol, with the exten
 
 #### Limits
 
-- **Chrome with the extension was not tested by a script**: Chrome 157 does not load an extension from the command line. The model on a plain page ran in it as in Brave.
+- **Chrome with the extension was checked by hand, not by a script**: Chrome 157 does not load an extension from the command line. Working in Chrome on macOS was confirmed manually; the model on a plain page ran in it as in Brave.
 - **Other graphics cards** than Apple's were not tested.
 - **Scores differ from basal-serve's.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
 - **Diluted texts.** A sentence about an accident followed by a long neutral text is judged neutral. basal-serve does the same.

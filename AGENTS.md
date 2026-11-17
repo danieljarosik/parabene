@@ -18,18 +18,22 @@
   (Developer mode → Load unpacked), then reload it and the tested tab after every change.
 - Check translations: `python3 tools/check_locales.py`   # after any change to `_locales/` or UI texts
 - Regenerate icons: `python3 tools/generate_icons.py`
+- Update the vendored wllama (only to change its version): `python3 tools/vendor_wllama.py`
 - No `npm install`, no bundler, no build step.
 
 ## Stack
-Chrome extension, Manifest V3. Plain JavaScript, HTML and CSS with no external dependencies;
-tooling scripts are plain Python 3 (standard library only). Settings live in
-`chrome.storage.local`. The optional AI evaluator talks only to the user-configured local endpoint
-(`localhost` by default, or the user's own LAN server, e.g. basal-serve).
+Chrome extension, Manifest V3. Plain JavaScript, HTML and CSS with no npm dependencies; the only
+third-party code is [wllama](https://github.com/ngxson/wllama) (MIT), vendored unchanged in
+`vendor/wllama/` for the built-in model (WebGPU, run in an offscreen document).
+Tooling scripts are plain Python 3 (standard library only). Settings live in `chrome.storage.local`. The optional AI evaluator uses either the user-configured local endpoint
+(`localhost` by default, or the user's own LAN server, e.g. basal-serve) or the built-in model that
+runs inside the browser. The only external request is the one-time model download from Hugging Face.
 
 ## Project structure
 See the *Architecture* section of `README.md`. Short version: `manifest.json`,
 `_locales/{pl,en}/messages.json` (UI texts, Polish is the default), `src/` (content script,
-service worker, evaluators, config, i18n), `popup/` (extension panel), `icons/`, `tools/`.
+service worker, evaluators, config, i18n), `offscreen/` (hidden page hosting the built-in model),
+`vendor/wllama/` (third-party, do not edit), `popup/` (extension panel), `icons/`, `tools/`.
 
 ## Language
 - Code, comments, documentation (`README.md`, this file) and git messages: English.
@@ -41,5 +45,8 @@ service worker, evaluators, config, i18n), `popup/` (extension panel), `icons/`,
 
 ## Don't
 - Do not add npm dependencies, a bundler or a build step.
-- Do not send page text anywhere other than the user-configured local AI endpoint.
+- Do not edit `vendor/wllama/` by hand; change it only through `tools/vendor_wllama.py` (pinned SHA-512).
+- Do not add other third-party code or load code from the network (wllama's compatibility mode stays off).
+- Do not send page text anywhere other than the user-configured local AI endpoint or the built-in model.
+- Do not widen the extension's CSP beyond `'wasm-unsafe-eval'`.
 - Do not commit packaged builds or keys (`*.zip`, `*.crx`, `*.pem`, `dist/`, `build/`).
