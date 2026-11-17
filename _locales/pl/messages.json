@@ -281,6 +281,10 @@
     "message": "basal-serve (/v1/basal)",
     "description": "Option of the protocol picker: the basal-serve typed-decision API (a product name, normally not translated)."
   },
+  "aiProtocol_builtin": {
+    "message": "Wbudowany model (w przeglądarce, WebGPU)",
+    "description": "Option of the protocol picker: the model runs inside the browser, without a server (WebGPU is a technology name, not translated)."
+  },
   "aiProtocolSaved": {
     "message": "Zapisano format zapytań.",
     "description": "Confirmation after changing the request format."
@@ -296,6 +300,10 @@
   "aiHint": {
     "message": "Gdy model nie odpowiada, ParaBene automatycznie używa słów kluczowych.",
     "description": "Help text under the endpoint input."
+  },
+  "aiBuiltinHint": {
+    "message": "Model działa w Twojej przeglądarce na karcie graficznej (WebGPU). Przy pierwszym użyciu pobiera ok. 1,2 GB z Hugging Face; tekst stron nie opuszcza przeglądarki.",
+    "description": "Help text shown when the built-in model is selected (Hugging Face is the name of the site the model file comes from)."
   },
   "aiErrorInvalidUrl": {
     "message": "Podaj pełny adres http(s)://, np. $example$",
@@ -378,6 +386,30 @@
   "aiError_unreachable": {
     "message": "serwer nie odpowiada",
     "description": "Connection error: the server cannot be reached."
+  },
+  "aiError_modelLoading": {
+    "message": "model jeszcze się ładuje (pobrano $percent$%) — spróbuj za chwilę",
+    "description": "Built-in model error: the model file is still being downloaded or loaded.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "aiError_noWebGPU": {
+    "message": "ta przeglądarka nie udostępnia WebGPU (karty graficznej)",
+    "description": "Built-in model error: the browser has no usable GPU adapter."
+  },
+  "aiError_modelFailed": {
+    "message": "nie udało się uruchomić modelu: $detail$",
+    "description": "Built-in model error: loading the model or a decision failed.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "out of memory"
+      }
+    }
   },
   "aiError_http": {
     "message": "HTTP $status$",

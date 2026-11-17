@@ -186,6 +186,8 @@ async function classify(text, test = false) {
  * closed otherwise, which frees the model's memory.
  */
 let builtinOpening = null;
+/** A message to a document that is not listening yet is sent again this many times, 100 ms apart. */
+const BUILTIN_SEND_ATTEMPTS = 50;
 let builtinSync = Promise.resolve();
 
 async function hasBuiltinDocument() {
@@ -211,17 +213,20 @@ async function openBuiltin() {
 }
 
 /**
- * Sends a message to the offscreen document. A document that exists but has not run its script
- * yet has no listener ("Receiving end does not exist"): the message is sent again for a short while.
+ * Sends a message to the offscreen document and resolves with its answer. A document that exists
+ * but has not run its script yet has no listener: the call fails ("Receiving end does not exist")
+ * or, when another page of the extension is open (the panel also listens for messages), resolves
+ * with no answer. The message is then sent again for a short while.
  */
 async function sendBuiltin(message) {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await chrome.runtime.sendMessage(message);
+      const response = await chrome.runtime.sendMessage(message);
+      if (response !== undefined || attempt >= BUILTIN_SEND_ATTEMPTS) return response;
     } catch (err) {
-      if (attempt >= 20 || !/Receiving end does not exist/i.test(String(err && err.message))) throw err;
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (attempt >= BUILTIN_SEND_ATTEMPTS || !/Receiving end does not exist/i.test(String(err && err.message))) throw err;
     }
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 

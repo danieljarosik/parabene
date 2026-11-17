@@ -1,0 +1,11 @@
+{
+  "package": "@wllama/wllama",
+  "version": "3.13.0",
+  "tarball": "https://registry.npmjs.org/@wllama/wllama/-/wllama-3.13.0.tgz",
+  "sha512": "ZvoRdQAn+E+18EvQ9qS036gudiI9rbZRBJgG/qNICPPwrA0Y6SMMdbziz/j7K/0WxcbJlhaRraVIYsnEy732NA==",
+  "files": {
+    "index.js": "fffd95c16ca191f31f4303664a05189c43d0cb20c52b67276c04e8857b138b64",
+    "wasm/wllama.wasm": "79ac5be917b71d50571a4f584436a9f6baf6b6e57719d094ed8bd950e9a65780",
+    "LICENCE": "5866e3bd7e3cbd3f7c8bea6efd8a1e7fa7cc8de68c30f428aff7c6584a0fb720"
+  }
+}

@@ -54,6 +54,9 @@ async function loadModel() {
     // allowOffline: a model that is already stored is loaded without asking the server about it
     { logger: { debug: quiet, log: quiet, warn: console.warn, error: console.error }, allowOffline: true }
   );
+  // No compatibility mode: in a browser without JSPI or 64-bit WebAssembly memory wllama would
+  // otherwise download a second build of itself from a CDN and run it. Loading then fails instead.
+  instance.setCompat(null);
   await instance.loadModelFromUrl(Config.BUILTIN_MODEL_URL, {
     n_ctx: Config.BUILTIN_CONTEXT,
     n_threads: 1, // the GPU does the work: measured, more threads do not make a decision faster

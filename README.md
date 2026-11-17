@@ -347,15 +347,132 @@ python3 tools/basal_check.py --url http://192.168.1.170:8010
 
 ### Built-in model (no server)
 
-Pick **Built-in model (in the browser, WebGPU)** (*Wbudowany model (w przeglądarce, WebGPU)*) under **Request format** (*Format zapytań*), or set `PARABENE_AI_PROTOCOL=builtin` in `.env`, to run the basal model inside the browser. Nothing has to be installed or started, and page text does not leave the browser.
+Pick **Built-in model (in the browser, WebGPU)** (*Wbudowany model (w przeglądarce, WebGPU)*) under **Request format** (*Format zapytań*), or set `PARABENE_AI_PROTOCOL=builtin` in `.env`, to run the basal model inside the browser. Nothing has to be installed or started, and page text does not leave the browser. Pages are judged as with a server; only the place where the model computes changes.
 
-- **What runs.** [basal-2.0-mini](https://huggingface.co/Remek/basal-2.0-mini-GGUF) as a GGUF file (`Q5_K_M`, 1.17 GB), by llama.cpp compiled to WebAssembly ([wllama](https://github.com/ngxson/wllama)), on the graphics card through WebGPU. It answers the same question as [basal-serve](#basal-serve-v1basal), so **Sensitivity** and **Hidden topics** apply.
-- **Where it runs.** In an [offscreen document](https://developer.chrome.com/docs/extensions/reference/api/offscreen), a hidden page of the extension. The service worker opens it when the browser starts (and when the extension is reloaded or the model is switched on), keeps it in the background and closes it when the filter, the AI model or this request format is switched off, which frees the model's memory. A service worker itself is stopped after 30 s without events, so it could not hold the model.
-- **First use.** The model file is downloaded once from Hugging Face (a pinned revision) into the extension's own storage; later starts read it from there, without a request to the server: the model is ready about 1.5 s after the browser starts, and the first decision or two take 1–3 s while the weights are read. While it is downloading, **Test** (*Testuj*) shows the progress and pages are filtered by keywords.
-- **Requirements.** A browser with WebGPU. Tested on Apple Silicon only (M4 Pro; the extension in Brave 156, the model on a plain page also in Chrome 157). There is no CPU fallback: without the GPU a decision takes 4–20 s. Without WebGPU, **Test** says so and keywords are used.
-- **Speed.** One decision takes 0.33 s for a short text, 0.53 s for 500 characters and 1.2 s for 2,000 (basal-serve with MLX on the same machine: 0.08 s, 0.14 s, 0.27 s). Decisions are made one at a time, so a page with many tiles is cleared within several seconds; a request waits up to 30 s.
-- **Scores.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed from basal-serve's by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
+#### What changes
+
+With a server (request formats `simple` and `basal`) the text leaves the browser for a process you install and start yourself:
+
+```mermaid
+flowchart LR
+    subgraph browser["Browser"]
+        P["Page<br/>content.js"] -- sendMessage --> S["Service worker<br/>background.js"]
+    end
+    S -- "HTTP POST" --> B["basal-serve<br/>separate process, port 8000"]
+```
+
+With the built-in model (`builtin`) the last hop stays inside the browser. It goes to a hidden page of the extension that holds the model:
+
+```mermaid
+flowchart LR
+    subgraph browser["Browser"]
+        P["Page<br/>content.js"] -- sendMessage --> S["Service worker<br/>background.js"]
+        S -- sendMessage --> O["Offscreen document<br/>wllama + model on WebGPU"]
+    end
+```
+
+- **What runs.** [basal-2.0-mini](https://huggingface.co/Remek/basal-2.0-mini-GGUF) as a GGUF file (`Q5_K_M`, 1.17 GB), by llama.cpp compiled to WebAssembly ([wllama](https://github.com/ngxson/wllama)), on the graphics card through WebGPU. It answers the same question as [basal-serve](#basal-serve-v1basal), so **Sensitivity** and **Hidden topics** apply. The prompt and the calibration are not rewritten in JavaScript: wllama has a decision API (`createSystemOne`), and the `-decision.gguf` variant of the model file carries the metadata it needs.
+- **Requirements.** A browser with WebGPU. Tested on Apple Silicon only (M4 Pro; the extension in Brave 156, the model on a plain page also in Chrome 157). There is no CPU fallback (see [Speed](#speed)). Without WebGPU, **Test** (*Testuj*) says so and keywords are used.
 - **Pictures** are not judged by the built-in model; [image evaluation](#image-evaluation-basal-omni) still needs its own server.
+
+#### How a decision travels
+
+The content script finds an article or a post and asks for a verdict on its text, as it does for a server. Three messages go one way and three answers come back:
+
+```mermaid
+sequenceDiagram
+    participant P as Page (content.js)
+    participant S as Service worker (background.js)
+    participant O as Offscreen document (offscreen.js)
+    participant W as wllama worker (WebAssembly + WebGPU)
+    P->>S: parabene:classify {text}
+    S->>O: parabene:builtin:evaluate {body}
+    O->>W: createSystemOne(body)
+    Note over W: 0.3–1.2 s on the GPU
+    W-->>O: probabilities per topic
+    O-->>S: {ok, data}
+    S-->>P: {hide, category, score}
+```
+
+`body` is the request basal-serve gets: the text and the list of topics. The service worker sums the probabilities of the selected topics and compares the sum with the threshold of the chosen **Sensitivity**.
+
+- **One decision at a time.** The model computes them one after another, so the service worker waits up to 30 s for an answer (`BUILTIN_TIMEOUT_MS`; a server gets 4 s).
+- **When the model does not answer** (it is still downloading, there is no WebGPU, it failed), the request fails with `modelLoading`, `noWebGPU` or `modelFailed` and the page uses keywords for 30 s, as with a server that is down.
+- **Keywords still work.** In the *Keywords + AI* mode a keyword match hides the content at once, without asking the model.
+
+#### Life of the offscreen document
+
+Chrome stops a service worker after 30 s without events, so it cannot hold the model. An [offscreen document](https://developer.chrome.com/docs/extensions/reference/api/offscreen), a hidden page of the extension, holds it instead; the service worker opens and closes that page as the settings say.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Loading: filter, AI model and builtin format on
+    Loading --> Ready: model loaded
+    Loading --> Error: no WebGPU or download failed
+    Error --> Loading: next request
+    Ready --> Closed: filter, AI model or builtin format off
+    Loading --> Closed: switched off
+    Error --> Closed: switched off
+```
+
+- **When it opens.** The condition is checked when the browser starts, each time the service worker starts and when the settings change.
+- **First use.** *Loading* is then a download of 1.17 GB from Hugging Face (a pinned revision) into the extension's own storage; it took 76–83 s. Meanwhile **Test** (*Testuj*) shows the progress and pages are filtered by keywords.
+- **Later starts** read the file from that storage, without a request to the server. The document opens 0.5 s after the browser starts and the model is ready after 1.0–2.3 s; the first decision or two take 1.4–1.6 s while the weights are read.
+- **No time limit.** The document stays open as long as the settings ask for it. In a test the service worker was stopped after 34 s without events, and the same document, with the model in memory, was still open when the test ended after 150 s.
+- **Closing frees the memory** (see [Memory](#memory)).
+
+#### Speed
+
+Median time of one decision on an Apple M4 Pro (24 GB):
+
+| Text | Built-in model (WebGPU) | basal-serve (MLX) | Built-in model on the CPU alone |
+| --- | ---: | ---: | ---: |
+| short, ~100 characters | 0.33 s | 0.08 s | 5.8 s |
+| medium, 500 characters | 0.53 s | 0.14 s | 6.5 s |
+| long, 2,000 characters (ParaBene's cap) | 1.19 s | 0.27 s | 20 s |
+
+The CPU is not used: it is slower than any wait a page can afford. One thread of WebAssembly is enough next to the GPU (seven threads gave the same times). Twenty medium texts sent at once took 10.5 s, so a page with many tiles is cleared within several seconds.
+
+#### Memory
+
+Physical memory of all the browser's processes, measured once with macOS `footprint` (which counts memory on the graphics card), 315 decisions:
+
+| Stage | Total | GPU process | Above the start |
+| --- | ---: | ---: | ---: |
+| AI model off | 555 MB | 73 MB | 0 |
+| Model loaded, before any decision | 2,206 MB | 1,406 MB | +1,651 MB |
+| After 15 decisions (4 of them long) | 2,238 MB | 1,413 MB | +1,683 MB |
+| After 115 decisions | 2,257 MB | 1,415 MB | +1,702 MB |
+| After 215 decisions | 2,362 MB | 1,497 MB | +1,807 MB |
+| After 315 decisions | 2,281 MB | 1,413 MB | +1,726 MB |
+| After 30 s without requests | 2,281 MB | 1,413 MB | +1,726 MB |
+| AI model off again | 625 MB | 65 MB | +70 MB |
+
+- **The model costs about 1.65 GB**: 1.27 GB of weights on the graphics card and about 0.3 GB in the extension's page. While loading, the GPU process reached 1,621 MB and the extension's page 529 MB.
+- **Decisions add little.** 315 of them added 75 MB, less with every hundred (47, 23 and 2 MB in the extension's page). The rise of the GPU process at 215 decisions did not last.
+- **Not measured:** thousands of decisions. 315 are too few to rule out a slow leak.
+
+#### What was checked
+
+In Brave 156 without a window, driven over the DevTools protocol, with the extension loaded from its directory:
+
+| Check | Result |
+| --- | --- |
+| Browser start, nothing else done | document open after 0.5 s, model ready after 1.0–2.3 s |
+| First download of the model | 76–83 s, then no further request |
+| Service worker stopped | the model is not loaded again; the next decision took 0.35–0.75 s |
+| AI model switched off | document closed |
+| A page with 6 articles that match no keyword | 3 hidden with *(powód: …, AI – tekst)*, 3 neutral ones shown |
+| **Test** (*Testuj*) in the panel | *Połączono ✓ … Wynik: 0,1 (próg 0,5)* |
+
+#### Limits
+
+- **Chrome with the extension was not tested by a script**: Chrome 157 does not load an extension from the command line. The model on a plain page ran in it as in Brave.
+- **Other graphics cards** than Apple's were not tested.
+- **Scores differ from basal-serve's.** wllama shows the option keys (`accident`, `violence`, …) to the model, where ParaBene asks basal-serve to hide them. On 24 Polish texts the hide score differed by 0.05 on average (0.21 at most) and no decision at the threshold 0.5 changed.
+- **Diluted texts.** A sentence about an accident followed by a long neutral text is judged neutral. basal-serve does the same.
+- **Download progress** is shown only after a click on **Test** (*Testuj*).
 
 `vendor/wllama/` is written by `python3 tools/vendor_wllama.py`, which downloads the pinned npm package, checks its SHA-512 and copies the library, its WebAssembly binary and its licence unchanged.
 
