@@ -142,3 +142,22 @@
 .parabene-shown > .parabene-bar.parabene-bar--shown .parabene-bar__btn:focus-visible {
   outline-color: #3f7fc4 !important;
 }
+
+/*
+ * Visible content in a horizontal flex row (data-parabene-row, set by the content script; e.g. a
+ * Facebook comment with the avatar beside the text). The bar takes a line of its own above the
+ * content, which keeps its row layout below; without this the bar sits in the row and squeezes
+ * the content to a narrow strip. Hidden containers and other layouts are not affected.
+ */
+.parabene-shown[data-parabene-row] {
+  flex-wrap: wrap !important;
+  align-content: flex-start !important;
+}
+
+.parabene-shown[data-parabene-row] > .parabene-bar {
+  flex: 0 0 100% !important;
+}
+
+.parabene-shown[data-parabene-row] > :not(.parabene-bar) {
+  min-width: 0 !important;
+}

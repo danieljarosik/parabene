@@ -32,6 +32,8 @@
   const ATTR_SHOWN = 'data-parabene-shown';
   /** Pending example id of revealed content, or the ids of the examples that let content through. */
   const ATTR_LEARN = 'data-parabene-learn';
+  /** On a visible container with a bar whose children form a horizontal flex row (a Facebook comment). */
+  const ATTR_ROW = 'data-parabene-row';
   const CLASS_HIDDEN = 'parabene-hidden';
   const CLASS_SHOWN = 'parabene-shown';
   const CLASS_BAR = 'parabene-bar';
@@ -755,6 +757,12 @@
     else el.removeAttribute(name);
   }
 
+  /** Whether the container lays its children out in a horizontal flex row. */
+  function isFlexRow(el) {
+    const style = getComputedStyle(el);
+    return style.display.endsWith('flex') && style.flexDirection.startsWith('row');
+  }
+
   /** "keyword" | "ai" for a hidden container, null when it is not hidden. */
   function hiddenSource(el) {
     if (!el.classList.contains(CLASS_HIDDEN)) return null;
@@ -818,6 +826,9 @@
     setOrRemoveAttribute(el, ATTR_MEDIA, result.media);
     setOrRemoveAttribute(el, ATTR_SHOWN, kind === 'hidden' ? '' : kind);
     if (learn !== undefined) setOrRemoveAttribute(el, ATTR_LEARN, learn);
+    // In a horizontal flex row (a Facebook comment: avatar beside the text) a bar above visible
+    // content would sit beside it and squeeze it to a narrow strip; CSS gives the bar its own line.
+    setOrRemoveAttribute(el, ATTR_ROW, kind !== 'hidden' && isFlexRow(el) ? 'true' : '');
     el.classList.toggle(CLASS_HIDDEN, kind === 'hidden');
     el.classList.toggle(CLASS_SHOWN, kind !== 'hidden');
     const current = countedKind(el);
@@ -846,6 +857,7 @@
     el.removeAttribute(ATTR_MEDIA);
     el.removeAttribute(ATTR_SHOWN);
     el.removeAttribute(ATTR_LEARN);
+    el.removeAttribute(ATTR_ROW);
     el.classList.remove(CLASS_HIDDEN, CLASS_SHOWN);
     if (state.learning.observer) state.learning.observer.unobserve(el);
   }
