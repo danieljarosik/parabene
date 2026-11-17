@@ -19,7 +19,7 @@ content script  →  service worker  →  offscreen/offscreen.js  →  vendor/wl
 
 - The service worker opens the offscreen document, with the request format `builtin`, while the model file is stored and both the filter and the AI model are on, or while a download the user asked for runs.
 - `offscreen.js` creates one `Wllama` object, looks for the stored model file with `modelManager.getModels()`, downloads it with `modelManager.downloadModel()` only when the user asked for that, loads it with `loadModel()` and answers each request with `createSystemOne()`, wllama's decision API.
-- Nothing else imports this directory. With the request formats `simple` and `basal` the files are never loaded. With `builtin` and the AI model off, the document is opened only for a moment when the panel asks whether a model file is in the storage, or while a download runs.
+- Nothing else imports this directory. With the request formats `simple` and `basal` the files are never loaded. With `builtin` and the AI model off, the document is opened only for a moment when the panel (or an install or update of the extension) asks whether a model file is in the storage, or while a download runs.
 
 Removing this directory breaks only the built-in model: its requests fail and pages are filtered by keywords.
 

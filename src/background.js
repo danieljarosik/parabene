@@ -25,7 +25,8 @@ const messageCache = new Map();
 chrome.runtime.onInstalled.addListener(() => {
   applyEnvFile()
     .then(() => Config.load())
-    .catch((err) => console.warn('[ParaBene] Failed to save default settings:', err));
+    .catch((err) => console.warn('[ParaBene] Failed to save default settings:', err))
+    .then(checkBuiltinFile);
   chrome.action.setBadgeBackgroundColor({ color: '#E8833A' }).catch(() => {});
 });
 
@@ -226,10 +227,10 @@ async function classify(text, test = false) {
  *  - while a requested download runs, whatever the filter and the AI switch say, and
  *  - while the file is stored and both the filter and the AI model are on;
  * otherwise it is closed, which frees the model's memory (it is also opened for a moment when the
- * panel asks whether a file is in the storage: builtinStatus). Choosing another model or another
- * request format cancels a download. This is checked on every start of the service worker (so also
- * when the browser starts and when the extension is installed or reloaded) and when the settings
- * or the records change.
+ * panel asks whether a file is in the storage, and once after an install or update:
+ * builtinStatus, checkBuiltinFile). Choosing another model or another request format cancels a
+ * download. This is checked on every start of the service worker (so also when the browser starts
+ * and when the extension is installed or reloaded) and when the settings or the records change.
  */
 let builtinOpening = null;
 /** A message to a document that is not listening yet is sent again this many times, 100 ms apart. */
@@ -381,6 +382,44 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 syncBuiltin(); // every start of the service worker, including install and reload
 
+/**
+ * Where the version with a single built-in model kept its one record, { url, state, error? } as
+ * now (Config.BUILTIN_STORAGE_KEY holds one per model).
+ */
+const LEGACY_BUILTIN_STORAGE_KEY = 'builtinModel';
+
+/**
+ * On install and update: the record kept under the legacy key is moved to its model's entry, so a
+ * download that was asked for starts again and a failed one keeps its error. An earlier version
+ * may also have stored the chosen model's file without any record (it downloaded the file by
+ * itself): the file is looked for now, so the model is used again at once instead of only after
+ * the panel is next opened. Only the extension's storage is checked; nothing is downloaded that
+ * the user did not ask for.
+ */
+async function checkBuiltinFile() {
+  try {
+    await builtinTask(migrateLegacyRecord);
+    await builtinStatus();
+  } catch (err) {
+    console.warn('[ParaBene] Built-in model:', err);
+  }
+}
+
+/**
+ * Moves a valid legacy record to the model with its URL, unless that model has a valid record
+ * already (a newer one), then removes the legacy key. Call only from a builtinTask.
+ */
+async function migrateLegacyRecord() {
+  const key = LEGACY_BUILTIN_STORAGE_KEY;
+  const legacy = (await chrome.storage.local.get(key))[key];
+  if (legacy === undefined) return;
+  const model = legacy && Config.BUILTIN_MODELS.find((item) => item.url === legacy.url);
+  if (model && Config.BUILTIN_STATES.includes(legacy.state) && (await builtinRecord(model)).state === 'missing') {
+    await writeBuiltinRecord(model, legacy.state, legacy.error);
+  }
+  await chrome.storage.local.remove(key);
+}
+
 /** The panel's "Download model": remembers the request for the chosen model; syncBuiltin then starts the download. */
 async function requestBuiltinDownload() {
   await builtinTask(async () => {
@@ -392,9 +431,9 @@ async function requestBuiltinDownload() {
 }
 
 /**
- * For the panel, about the chosen model: { model, status, progress?, error?, stored? } with status
- * "missing" | "downloading" | "loading" | "ready" | "stored" (on disk, not in memory) | "error"
- * (`stored`: the file is there, so the error is not about the download).
+ * For the panel (and checkBuiltinFile), about the chosen model: { model, status, progress?, error?,
+ * stored? } with status "missing" | "downloading" | "loading" | "ready" | "stored" (on disk, not in
+ * memory) | "error" (`stored`: the file is there, so the error is not about the download).
  * The records are checked against the document: an open document is asked for its state; with no
  * document and no download running, one is opened for a moment to ask whether the file is in the
  * storage — a file without a record (downloaded by an earlier version, or a record lost with the
