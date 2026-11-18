@@ -171,7 +171,7 @@ All settings live in `chrome.storage.local`:
   "aiTopics": ["accident", "violence", "death", "profanity"],
   "aiImagesEnabled": false,
   "aiImagesEndpoint": "http://localhost:8011",
-  "logEnabled": false,
+  "evalLogEnabled": false,
   "learnEnabled": false,
   "learnSimilarity": "medium",
   "language": "pl"
@@ -196,7 +196,7 @@ PARABENE_AI_IMAGES_ENABLED=true
 PARABENE_AI_IMAGES_ENDPOINT=http://192.168.1.170:8011
 ```
 
-The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`/`builtin`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODEL` (a built-in model's id, see [Models](#models)), `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
+The service worker reads `.env` on install and on every reload of the extension in `chrome://extensions`, and writes the values into `chrome.storage.local`. So edit `.env`, then reload the extension. Changes made in the panel last until the next reload. `PARABENE_AI_PROTOCOL` given without `PARABENE_AI_ENDPOINT` also switches an endpoint that is still a default one to that protocol's default address (as the panel does). Supported keys: `PARABENE_ENABLED`, `PARABENE_AI_ENABLED` (`true`/`false`), `PARABENE_AI_PROTOCOL` (`simple`/`basal`/`builtin`), `PARABENE_AI_ENDPOINT`, `PARABENE_AI_MODEL` (a built-in model's id, see [Models](#models)), `PARABENE_AI_MODE` (`both`/`ai`), `PARABENE_AI_SENSITIVITY` (`low`/`medium`/`high`), `PARABENE_AI_TOPICS` (comma-separated ids from `accident`, `violence`, `death`, `profanity`, `politics`, `clickbait`; empty = none), `PARABENE_AI_IMAGES_ENABLED` (`true`/`false`), `PARABENE_AI_IMAGES_ENDPOINT`, `PARABENE_EVAL_LOG_ENABLED` (`true`/`false`), `PARABENE_LEARN_ENABLED` (`true`/`false`), `PARABENE_LEARN_SIMILARITY` (`strict`/`medium`/`loose`) and `PARABENE_LANGUAGE` (`pl`/`en`). Unknown keys and invalid values are skipped with a warning in the service worker console. Without a `.env` file nothing changes.
 
 ### Internationalisation (i18n)
 
@@ -588,11 +588,11 @@ Asking about several pictures in one request is not faster (~1.5 s each) and blu
 
 ## Statistics and the log of evaluations
 
-Turn on **Record evaluated content** (*Zapisuj ocenione treści*) in the panel or on the statistics page (or set `PARABENE_LOG_ENABLED=true` in `.env`) to see what ParaBene does while you browse and to collect material for tuning the keywords, the sensitivity and the topics. It is off by default.
+Turn on **Record evaluated content** (*Zapisuj ocenione treści*) in the panel or on the statistics page (or set `PARABENE_EVAL_LOG_ENABLED=true` in `.env`) to see what ParaBene does while you browse and to collect material for tuning the keywords, the sensitivity and the topics. It is off by default, also after an update from a version that had **Record hidden content** (*Zapisuj ukryte treści*) on: that switch (`logEnabled`) covered hidden content only, so it is not carried over to this log, which records much more, and neither is its value in an older settings backup or `PARABENE_LOG_ENABLED` in `.env`.
 
-**What is recorded.** Every text that is evaluated, whether it ends up hidden or shown, with the page address, who decided (keywords, the AI text model, keywords while the AI model was unavailable) and, for the AI model, its score, threshold and probabilities per topic. A picture is recorded when it hides its container. The same text judged the same way again (a page reload) is one entry with a count. Nothing is recorded from private windows, and nothing from before the switch was turned on.
+**What is recorded.** Every text that is evaluated, whether it ends up hidden or shown, with the page address (without the part after `?` or `#`, which can hold tokens, session ids or searches), who decided (keywords, the AI text model, keywords while the AI model was unavailable) and, for the AI model, its score, threshold and probabilities per topic. A picture is recorded when it hides its container. The same text judged the same way again (a page reload) is one entry with a count. Nothing is recorded from private windows or from **Excluded sites** (*Wykluczone witryny*), and nothing from before the switch was turned on. Entries recorded on a site before it was excluded stay until the log is cleared.
 
-**Where it is kept.** In IndexedDB in the extension's own storage (`src/store.js`), written by the service worker in batches once a second (`src/log.js`). The newest 10,000 entries are kept, each text capped at 2,000 characters; corrected entries are not removed when the log is full. It never leaves the browser except as a file you download. The log of hidden content that versions up to 1.0 kept in `chrome.storage.local` (key `hideLog`) is moved into it the first time something is recorded.
+**Where it is kept.** In IndexedDB in the extension's own storage (`src/store.js`), written by the service worker in batches once a second (`src/log.js`). The newest 10,000 entries are kept, each text capped at 2,000 characters; corrected entries are not removed when the log is full. There is no time limit. It never leaves the browser except as a file you download. The log of hidden content that versions up to 1.0 kept in `chrome.storage.local` (key `hideLog`) is moved into it when the extension is updated, so it can be seen and cleared on the statistics page.
 
 **The statistics page.** **Open statistics** (*Otwórz statystyki*) in the panel opens `stats/stats.html` in a tab. It shows
 
@@ -683,7 +683,7 @@ model's file are not part of it.
 ```json
 {
   "format": "parabene-settings",
-  "formatVersion": 1,
+  "formatVersion": 2,
   "extension": "ParaBene",
   "extensionVersion": "1.0.0",
   "exportedAt": "2026-11-17T13:30:00.000Z",
@@ -712,7 +712,8 @@ Files from other versions are read as far as possible, with a warning for each d
 For developers: adding a setting needs no new format version (older files just lack it). A change
 that makes older files wrong — a setting renamed, a value with a new meaning, a new structure —
 raises `FORMAT_VERSION` in `src/backup.js` and adds a step to `MIGRATIONS` there that converts the
-previous format.
+previous format. Format 2 drops `logEnabled` (the log of hidden content): the log of evaluations has
+its own switch, `evalLogEnabled`, which an older file does not turn on.
 
 Choosing a file takes the focus away from the extension's popup, and the browser closes it
 (always on Linux) before the file reaches the extension. So **Import from file…** and **Import
@@ -762,7 +763,7 @@ The service worker keeps the examples in `chrome.storage.local` (key `learned`, 
 - No telemetry or analytics. The only request to an external server is the one-time download of the model file from Hugging Face, which starts when you click **Download model** for the [built-in model](#built-in-model-no-server); it carries no page content.
 - Settings are stored only in `chrome.storage.local`. They leave it only as a [backup or list file](#backup-and-keyword-files) you save yourself.
 - Learned examples (texts and page addresses of content you revealed) stay in `chrome.storage.local` and are compared locally; learning is off by default.
-- The log of evaluations is off by default. When on, it keeps the text and the address of every evaluated content of the pages you visit (private windows excluded) in the extension's own IndexedDB storage, and leaves the browser only as a file you download yourself. Review it before sharing; **Clear log** on the statistics page deletes it.
+- The log of evaluations is off by default. When on, it keeps the text and the address (without its query and fragment) of every evaluated content of the pages you visit (except private windows and excluded sites) in the extension's own IndexedDB storage, with no time limit, and leaves the browser only as a file you download yourself. In effect it is a history of what you read, so treat the `.jsonl` file as private and review it before sharing; **Clear log** on the statistics page deletes it.
 - With image evaluation on, pictures are fetched by the extension from the address the page loads them from (without cookies) and sent **only** to the image server entered in the panel.
 - In AI mode, text is sent **only** to the address entered in the panel (`localhost` by default; enter a LAN address such as `http://192.168.1.170:8010/v1/basal` only for a server you run yourself). With the built-in model it is not sent at all: the model reads it inside the browser.
 

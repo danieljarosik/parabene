@@ -59,7 +59,7 @@ async function clearLog() {
 
 function renderNotice() {
   let text = failure;
-  if (!text && !ctx.settings.logEnabled) text = t(ctx.records.length ? 'statsLogOffNote' : 'statsLogOffEmpty');
+  if (!text && !ctx.settings.evalLogEnabled) text = t(ctx.records.length ? 'statsLogOffNote' : 'statsLogOffEmpty');
   notice.hidden = !text;
   notice.textContent = text;
   notice.classList.toggle('notice--error', Boolean(failure));
@@ -74,7 +74,7 @@ export function showFailure(text) {
 }
 
 export function renderActions() {
-  toggle.checked = ctx.settings.logEnabled;
+  toggle.checked = ctx.settings.evalLogEnabled;
   downloadButton.disabled = ctx.records.length === 0;
   clearButton.disabled = ctx.records.length === 0;
   if (!clearArmedTimer) clearButton.textContent = t('logClear');
@@ -82,7 +82,7 @@ export function renderActions() {
 }
 
 export function bindActions() {
-  toggle.addEventListener('change', () => chrome.storage.local.set({ logEnabled: toggle.checked }));
+  toggle.addEventListener('change', () => chrome.storage.local.set({ evalLogEnabled: toggle.checked }));
   downloadButton.addEventListener('click', download);
   clearButton.addEventListener('click', clearLog);
 }

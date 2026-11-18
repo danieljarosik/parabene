@@ -24,6 +24,7 @@ const Log = self.ParaBeneLog;
 const messageCache = new Map();
 
 chrome.runtime.onInstalled.addListener(() => {
+  Log.migrate(); // the log of versions up to 1.0 and its switch (src/log.js)
   applyEnvFile()
     .then(() => Config.load())
     .catch((err) => console.warn('[ParaBene] Failed to save default settings:', err))
@@ -105,11 +106,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === Config.MSG.LOG_VERDICT || message.type === Config.MSG.LOG_REVEALED) {
-    Log.queue(message.type, message.entry);
+    // Only from a content script in a normal window; the entry gets the tab's address from the browser.
+    if (sender.tab && sender.tab.id >= 0 && !sender.tab.incognito) Log.queue(message.type, message.entry, sender.url);
     return false;
   }
 
-  if (message.type === Config.MSG.LOG_CLEAR) {
+  if (message.type === Config.MSG.LOG_CLEAR && isExtensionPage(sender)) {
     Log.clear().then(() => sendResponse({ ok: true }), (err) => sendResponse({ ok: false, error: describeError(err) }));
     return true;
   }

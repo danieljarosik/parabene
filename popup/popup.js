@@ -211,7 +211,7 @@
     for (const box of els.aiTopics) box.checked = settings.aiTopics.includes(box.value);
     els.aiTopicsEmpty.hidden = settings.aiTopics.length > 0;
 
-    els.logEnabled.checked = settings.logEnabled;
+    els.logEnabled.checked = settings.evalLogEnabled;
     els.learnEnabled.checked = settings.learnEnabled;
     els.learnSettings.classList.toggle('ai--inactive', !settings.learnEnabled);
     els.learnSimilarity.value = settings.learnSimilarity;
@@ -1165,7 +1165,7 @@
     els.aiImagesEndpoint.addEventListener('input', () => els.aiImagesEndpoint.classList.remove('input--invalid'));
     els.aiImagesTest.addEventListener('click', testImagesEndpoint);
     els.logEnabled.addEventListener('change', () => {
-      chrome.storage.local.set({ logEnabled: els.logEnabled.checked });
+      chrome.storage.local.set({ evalLogEnabled: els.logEnabled.checked });
     });
     els.learnEnabled.addEventListener('change', () => {
       chrome.storage.local.set({ learnEnabled: els.learnEnabled.checked });

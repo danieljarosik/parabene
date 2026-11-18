@@ -34,7 +34,7 @@
   const SETTINGS_FORMAT = 'parabene-settings';
   const KEYWORDS_FORMAT = 'parabene-keywords';
   const SITES_FORMAT = 'parabene-sites';
-  const FORMAT_VERSION = 1;
+  const FORMAT_VERSION = 2;
   const KEYWORDS_VERSION = 1;
   const SITES_VERSION = 1;
   /** Larger files are not read (a full backup with 300 examples is well under 1 MB). */
@@ -42,11 +42,22 @@
 
   /**
    * MIGRATIONS[n](data) turns the parsed file of format n into format n + 1 (returning a new
-   * object). Example for a future format 2 that renamed "aiMode" to "aiStrategy":
-   *   1: (data) => { const settings = { ...data.settings }; settings.aiStrategy = settings.aiMode;
-   *                  delete settings.aiMode; return { ...data, formatVersion: 2, settings }; },
+   * object). A rename would be, e.g. for "aiMode" → "aiStrategy":
+   *   n: (data) => { const settings = { ...data.settings }; settings.aiStrategy = settings.aiMode;
+   *                  delete settings.aiMode; return { ...data, formatVersion: n + 1, settings }; },
    */
-  const MIGRATIONS = Object.freeze({});
+  const MIGRATIONS = Object.freeze({
+    /**
+     * Format 2: "logEnabled" (a log of hidden content) gave way to "evalLogEnabled" (a log of
+     * everything evaluated). The old consent covered less, so it is dropped, not carried over:
+     * the file then lacks "evalLogEnabled" and the current value is kept.
+     */
+    1: (data) => {
+      const settings = isObject(data.settings) ? { ...data.settings } : data.settings;
+      if (isObject(settings)) delete settings[Config.LOG_OLD_SETTING];
+      return { ...data, formatVersion: 2, settings };
+    },
+  });
 
   class BackupError extends Error {
     /** `code` → the panel message "importError_<code>". */

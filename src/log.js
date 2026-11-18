@@ -1,10 +1,10 @@
 /*
- * ParaBene – the service worker's side of the log of evaluated content (opt-in, `logEnabled`).
+ * ParaBene – the service worker's side of the log of evaluated content (opt-in, `evalLogEnabled`).
  *
  * Content scripts send every verdict (LOG_VERDICT) and every "Show anyway" (LOG_REVEALED); this
  * file writes them into the database (src/store.js) in batches, moves the log of versions up to
  * 1.0 into it once, and clears the log on request. Loaded by src/background.js, which only routes
- * the messages here.
+ * the messages here (and only those of content scripts in normal windows).
  */
 (function (root) {
   'use strict';
@@ -18,11 +18,15 @@
   /** Writes and clears run one after another. */
   let writing = Promise.resolve();
 
-  /** Entries arrive in bursts while a page loads — they are written to the database in batches. */
-  function add(type, entry) {
+  /**
+   * Entries arrive in bursts while a page loads — they are written to the database in batches.
+   * `pageUrl` is the address of the sending tab as the browser reports it (sender.url); it is what
+   * the entry records and what the excluded sites are checked against.
+   */
+  function add(type, entry, pageUrl) {
     if (!entry || typeof entry.text !== 'string') return;
     if (!entry.text && !(typeof entry.image === 'string' && entry.image)) return;
-    queue.push({ type, entry });
+    queue.push({ type, entry: Object.assign({}, entry, { url: String(pageUrl || '') }) });
     if (!timer) timer = setTimeout(flush, FLUSH_MS);
   }
 
@@ -31,12 +35,14 @@
     const batch = queue.splice(0);
     writing = writing
       .then(async () => {
-        const { logEnabled } = await Config.load();
-        if (!logEnabled) return;
+        const { evalLogEnabled, excludedSites } = await Config.load();
+        if (!evalLogEnabled) return;
         await moveOldLog();
         // In the order they happened: a "Show anyway" may follow its own verdict in one batch.
         const verdicts = [];
         for (const { type, entry } of batch) {
+          // A site excluded while its entries waited in the queue: nothing more from it is written.
+          if (Config.isSiteExcluded(excludedSites, Config.siteHost(entry.url))) continue;
           const clean = Store.sanitize(entry);
           if (type === Config.MSG.LOG_REVEALED) {
             if (verdicts.length) await Store.add(verdicts.splice(0));
@@ -68,6 +74,21 @@
   }
 
   /**
+   * On install and update. The switch of versions up to 1.0 (`logEnabled`) covered hidden content
+   * only, so it does not turn on this log, which records everything evaluated: it is removed and
+   * the user turns the new log on if they want it. The entries recorded with it are moved into the
+   * database so they can be seen and cleared on the statistics page.
+   */
+  function migrate() {
+    const moved = writing.then(async () => {
+      await chrome.storage.local.remove(Config.LOG_OLD_SETTING);
+      await moveOldLog();
+    });
+    writing = moved.catch((err) => console.warn('[ParaBene] Failed to move the old log:', err));
+    return writing;
+  }
+
+  /**
    * "Clear log" from the statistics page. It runs in the same queue as the writes, so entries not
    * yet written are dropped too and a write in progress cannot follow the clearing.
    */
@@ -83,5 +104,5 @@
     return cleared;
   }
 
-  root.ParaBeneLog = Object.freeze({ queue: add, clear });
+  root.ParaBeneLog = Object.freeze({ queue: add, migrate, clear });
 })(globalThis);

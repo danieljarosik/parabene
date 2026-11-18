@@ -26,7 +26,7 @@
     let failure = '';
 
     function render(settings) {
-      if (settings) enabled = settings.logEnabled;
+      if (settings) enabled = settings.evalLogEnabled;
       count.textContent = formatNumber(counts.total);
       if (failure) {
         showFeedback(status, t('logReadFailed', failure), 'error');

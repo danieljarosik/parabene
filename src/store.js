@@ -1,5 +1,5 @@
 /*
- * ParaBene – the log of evaluated content (opt-in, `logEnabled`).
+ * ParaBene – the log of evaluated content (opt-in, `evalLogEnabled`).
  *
  * One record per evaluated text: what was judged, where, by what (keywords, the AI text model,
  * the AI image model), the verdict (hidden or shown) with the model's numbers, and the user's
@@ -17,7 +17,7 @@
  *             text judged the same way again (a page reload) updates the record instead of
  *             adding one — `count` and `lastTime` tell how often and when last
  *   time, lastTime   ISO timestamps of the first and the last evaluation
- *   url, host
+ *   url, host   the page's address without its query and fragment (see pageUrl), its host
  *   hidden    1 | 0 (a number, so it can be indexed)
  *   source    "keyword" | "ai";  media: "image" + image (address) for a verdict about a picture
  *   mode      "keywords" | "both" | "ai" at the time
@@ -122,6 +122,20 @@
     return url.slice(0, 1000);
   }
 
+  /**
+   * Page address for the log: an HTTP(S) address without its query and fragment, which can carry
+   * tokens, session ids or what was searched for; '' for anything else.
+   */
+  function pageUrl(value) {
+    try {
+      const url = new URL(String(value || ''));
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+      return `${url.origin}${url.pathname}`.slice(0, 500);
+    } catch (_) {
+      return '';
+    }
+  }
+
   function hostOf(url) {
     try {
       return new URL(url).hostname.replace(/^www\./, '');
@@ -149,7 +163,7 @@
 
   /** Keeps only the known fields, with sane types and lengths (entries come from content scripts). */
   function sanitize(raw) {
-    const url = String(raw.url || '').slice(0, 500);
+    const url = pageUrl(raw.url);
     const entry = {
       time: typeof raw.time === 'string' && !Number.isNaN(Date.parse(raw.time)) ? raw.time : new Date().toISOString(),
       url,

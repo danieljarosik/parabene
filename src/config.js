@@ -239,7 +239,7 @@
     aiTopics: DEFAULT_AI_TOPICS,
     aiImagesEnabled: false,
     aiImagesEndpoint: DEFAULT_IMAGE_ENDPOINT,
-    logEnabled: false,
+    evalLogEnabled: false,
     learnEnabled: false,
     learnSimilarity: DEFAULT_LEARN_SIMILARITY,
     language: DEFAULT_LANGUAGE,
@@ -273,14 +273,19 @@
   });
 
   /**
-   * Log of evaluated content (opt-in, `logEnabled`): every judged text, hidden or shown, kept by
-   * the service worker in IndexedDB (src/store.js), never sent anywhere; the statistics page
-   * (STATS_PAGE) shows it and lets the user correct verdicts, the panel exports it as a .jsonl
-   * file. Only the newest LOG_MAX_ENTRIES are kept (corrected ones stay), each text capped at
-   * LOG_MAX_TEXT characters. LOG_STORAGE_KEY is where versions up to 1.0 kept the log of hidden
-   * content in chrome.storage.local: it is moved into the database once.
+   * Log of evaluated content (opt-in, `evalLogEnabled`): every judged text, hidden or shown, kept
+   * by the service worker in IndexedDB (src/store.js), never sent anywhere; the statistics page
+   * (STATS_PAGE) shows it, lets the user correct verdicts and exports it as a .jsonl file. Only the
+   * newest LOG_MAX_ENTRIES are kept (corrected ones stay), each text capped at LOG_MAX_TEXT
+   * characters.
+   *
+   * Versions up to 1.0 had a log of hidden content only, switched on by `logEnabled`
+   * (LOG_OLD_SETTING) and kept in chrome.storage.local under LOG_STORAGE_KEY. That consent covered
+   * less than this log records, so it is not carried over: the old setting is removed and the new
+   * log starts off; the old entries are moved into the database once (src/log.js).
    */
   const LOG_STORAGE_KEY = 'hideLog';
+  const LOG_OLD_SETTING = 'logEnabled';
   const LOG_MAX_ENTRIES = 10000;
   const STATS_PAGE = 'stats/stats.html';
   const LOG_MAX_TEXT = 2000;
@@ -415,12 +420,12 @@
     PARABENE_AI_TOPICS: 'aiTopics',
     PARABENE_AI_IMAGES_ENABLED: 'aiImagesEnabled',
     PARABENE_AI_IMAGES_ENDPOINT: 'aiImagesEndpoint',
-    PARABENE_LOG_ENABLED: 'logEnabled',
+    PARABENE_EVAL_LOG_ENABLED: 'evalLogEnabled',
     PARABENE_LEARN_ENABLED: 'learnEnabled',
     PARABENE_LEARN_SIMILARITY: 'learnSimilarity',
     PARABENE_LANGUAGE: 'language',
   });
-  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'aiImagesEnabled', 'logEnabled', 'learnEnabled']);
+  const BOOLEAN_SETTINGS = new Set(['enabled', 'aiEnabled', 'aiImagesEnabled', 'evalLogEnabled', 'learnEnabled']);
 
   /**
    * .env text (KEY=VALUE lines, # comments, optional quotes) → partial settings.
@@ -532,7 +537,7 @@
       aiTopics: Array.isArray(s.aiTopics) ? sanitizeTopics(s.aiTopics) : [...DEFAULT_AI_TOPICS],
       aiImagesEnabled: s.aiImagesEnabled === true,
       aiImagesEndpoint: imagesEndpoint || DEFAULT_IMAGE_ENDPOINT,
-      logEnabled: s.logEnabled === true,
+      evalLogEnabled: s.evalLogEnabled === true,
       learnEnabled: s.learnEnabled === true,
       learnSimilarity: isSupportedSimilarity(s.learnSimilarity) ? s.learnSimilarity : DEFAULT_LEARN_SIMILARITY,
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
@@ -616,6 +621,7 @@
     PROFANITY,
     MSG,
     LOG_STORAGE_KEY,
+    LOG_OLD_SETTING,
     LOG_MAX_ENTRIES,
     STATS_PAGE,
     LOG_MAX_TEXT,

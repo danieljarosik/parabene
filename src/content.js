@@ -1284,7 +1284,7 @@
   /* ------------------------------------------------------------------ */
 
   function logEvent(type, entry) {
-    if (!state.settings || !state.settings.logEnabled || !isContextAlive()) return;
+    if (!state.settings || !state.settings.evalLogEnabled || !isContextAlive()) return;
     // Nothing from a private window is written down.
     if (chrome.extension && chrome.extension.inIncognitoContext) return;
     try {
@@ -1303,7 +1303,7 @@
     const settings = state.settings;
     const entry = {
       time: new Date().toISOString(),
-      url: location.href,
+      // No address: the service worker takes the tab's from the browser.
       hidden: result.hide === true,
       learned,
       source: result.source === 'ai' ? 'ai' : 'keyword',
@@ -1372,7 +1372,7 @@
     const exclusionChanged = Config.isSiteExcluded(sanitized.excludedSites, location.hostname) !==
       Config.isSiteExcluded(state.settings.excludedSites, location.hostname);
     // Keep settings received during startup. Exclusions for other hosts need no re-scan here.
-    const rescan = exclusionChanged || keys.some((key) => key !== 'language' && key !== 'logEnabled' && key !== 'excludedSites');
+    const rescan = exclusionChanged || keys.some((key) => key !== 'language' && key !== 'evalLogEnabled' && key !== 'excludedSites');
     if (!state.i18n || !rescan) {
       const changed = sanitized.language !== state.settings.language;
       state.settings = sanitized;
