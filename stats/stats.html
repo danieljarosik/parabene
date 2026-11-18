@@ -90,6 +90,86 @@
         <button type="button" class="link" id="sites-all" hidden></button>
       </section>
 
+      <section class="card" id="reviewer">
+        <h2 data-i18n="reviewTitle"></h2>
+        <p class="hint" data-i18n="reviewLead"></p>
+        <div class="filters">
+          <label class="filter">
+            <span data-i18n="reviewProviderLabel"></span>
+            <select id="review-provider">
+              <option value="openai" data-i18n="reviewProvider_openai"></option>
+              <option value="claude" data-i18n="reviewProvider_claude"></option>
+            </select>
+          </label>
+          <label class="filter filter--wide">
+            <span data-i18n="reviewEndpointLabel"></span>
+            <input type="url" id="review-endpoint" spellcheck="false" autocomplete="off" />
+          </label>
+          <label class="filter">
+            <span data-i18n="reviewKeyLabel"></span>
+            <input type="password" id="review-key" spellcheck="false" autocomplete="off" />
+          </label>
+          <div class="filter">
+            <label for="review-model" data-i18n="reviewModelLabel"></label>
+            <select id="review-model"></select>
+            <input type="text" id="review-model-custom" spellcheck="false" autocomplete="off" data-i18n-aria-label="reviewModelCustomLabel" hidden />
+          </div>
+          <div class="filter filter--button">
+            <button type="button" class="btn" id="review-models-refresh" data-i18n="reviewModelsRefresh"></button>
+          </div>
+          <div class="filter filter--button">
+            <button type="button" class="btn" id="review-save" data-i18n="reviewSave"></button>
+          </div>
+        </div>
+        <p class="hint" data-i18n="reviewModelHint"></p>
+        <p class="hint" data-i18n="reviewKeyHint"></p>
+        <p class="hint" id="review-saved" role="status"></p>
+
+        <div class="review__send">
+          <button type="button" class="btn btn--primary" id="review-send" data-i18n="reviewSend"></button>
+          <span class="hint" id="review-candidates"></span>
+        </div>
+        <div class="confirm" id="review-confirm" role="alertdialog" aria-labelledby="review-confirm-text" hidden>
+          <p id="review-confirm-text"></p>
+          <div class="confirm__actions">
+            <button type="button" class="btn btn--primary" id="review-confirm-send" data-i18n="reviewConfirmSend"></button>
+            <button type="button" class="btn" id="review-confirm-cancel" data-i18n="reviewCancel"></button>
+          </div>
+        </div>
+        <div class="review__running" id="review-running" hidden>
+          <progress id="review-progress" max="1" value="0" aria-labelledby="review-progress-text"></progress>
+          <span id="review-progress-text" role="status"></span>
+          <button type="button" class="btn" id="review-stop" data-i18n="reviewStop"></button>
+        </div>
+        <div class="review__batches" id="review-batches" hidden>
+          <div class="review__batches-head">
+            <h3 data-i18n="reviewBatchesTitle"></h3>
+            <button type="button" class="btn" id="review-batch-check" data-i18n="reviewBatchCheck"></button>
+          </div>
+          <p class="hint" id="review-batch-sending" role="status" hidden></p>
+          <div class="scroll">
+            <table class="table" id="review-batch-table">
+              <thead>
+                <tr>
+                  <th data-i18n="reviewBatchColId"></th>
+                  <th data-i18n="reviewModelLabel"></th>
+                  <th class="num" data-i18n="reviewBatchColEntries"></th>
+                  <th data-i18n="reviewBatchColSent"></th>
+                  <th data-i18n="reviewBatchColStatus"></th>
+                  <th><span class="visually-hidden" data-i18n="reviewBatchColActions"></span></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="hint" data-i18n="reviewBatchHint"></p>
+        </div>
+        <p class="hint" id="review-result" role="status" hidden></p>
+        <p class="review__summary" id="review-summary" hidden></p>
+        <p class="hint" id="review-summary-hint" data-i18n="reviewSummaryHint" hidden></p>
+        <button type="button" class="btn" id="review-accept-all" hidden></button>
+      </section>
+
       <section class="card">
         <h2 data-i18n="statsEntriesTitle"></h2>
         <div class="filters">
@@ -123,6 +203,17 @@
               <option value="uncorrected" data-i18n="statsLabelUncorrected"></option>
             </select>
           </label>
+          <label class="filter">
+            <span data-i18n="reviewFilterLabel"></span>
+            <select id="filter-suggestion">
+              <option value="all" data-i18n="statsAll"></option>
+              <option value="with" data-i18n="reviewFilter_with"></option>
+              <option value="agree" data-i18n="reviewFilter_agree"></option>
+              <option value="disagree" data-i18n="reviewFilter_disagree"></option>
+              <option value="pending" data-i18n="reviewFilter_pending"></option>
+              <option value="without" data-i18n="reviewFilter_without"></option>
+            </select>
+          </label>
           <label class="filter filter--wide">
             <span data-i18n="statsFilterSearch"></span>
             <input type="search" id="filter-search" data-i18n-placeholder="statsSearchPlaceholder" />
@@ -141,6 +232,7 @@
 
     <script src="../src/config.js"></script>
     <script src="../src/i18n.js"></script>
+    <script src="../src/evaluators.js"></script>
     <script src="../src/store.js"></script>
     <script type="module" src="stats.js"></script>
   </body>

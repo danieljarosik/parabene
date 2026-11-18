@@ -14,7 +14,7 @@ export const ctx = {
   /** All records of the log, newest first. */
   records: [],
   /** What the list of entries shows. */
-  filters: { verdict: 'all', source: 'all', site: '', label: 'all', search: '' },
+  filters: { verdict: 'all', source: 'all', site: '', label: 'all', suggestion: 'all', search: '' },
   page: 0,
   /** Draws the whole page again from `records` and `settings`. */
   render: () => {},

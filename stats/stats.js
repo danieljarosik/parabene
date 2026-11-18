@@ -8,11 +8,16 @@
  *   sites.js     the sites
  *   entries.js   the entries with filters, and the corrections of verdicts
  *   actions.js   recording on/off, download, clear
+ *   reviewer-panel.js  sending entries to an external, larger model for review (with
+ *                reviewer-config.js, reviewer-models.js; reviewer-client.js for OpenAI-compatible
+ *                APIs, reviewer-claude.js and reviewer-batch.js for the Claude API) and suggestions.js
+ *                for its proposals
  * with context.js (shared state) and format.js (helpers).
  */
 import { Config, I18n, Store, ctx, t } from './context.js';
 import { bindActions, renderActions, showFailure } from './actions.js';
 import { bindEntries, renderEntries } from './entries.js';
+import { initReviewer, renderReviewer, startReviewer } from './reviewer-panel.js';
 import { renderScores } from './scores.js';
 import { renderSites } from './sites.js';
 import { renderSummary } from './summary.js';
@@ -25,6 +30,7 @@ function render() {
   renderScores();
   renderSites();
   renderEntries();
+  renderReviewer();
 }
 
 /** When a record was last evaluated, as a number for sorting. */
@@ -81,8 +87,10 @@ async function init() {
   Store.subscribe(scheduleReload);
   chrome.storage.onChanged.addListener(onSettingsChanged);
   ctx.settings = await Config.load();
+  await initReviewer();
   await readRecords();
   await applyLanguage(ctx.settings.language);
+  startReviewer();
 }
 
 init()

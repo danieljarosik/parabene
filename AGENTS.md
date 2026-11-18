@@ -28,7 +28,8 @@ third-party code is [wllama](https://github.com/ngxson/wllama) (MIT), vendored u
 Tooling scripts are plain Python 3 (standard library only). Settings live in `chrome.storage.local`. The optional AI evaluator uses either the user-configured local endpoint
 (`localhost` by default, or the user's own LAN server, e.g. basal-serve) or the built-in model that
 runs inside the browser. The only external request is the one-time model download from Hugging Face,
-which the user starts with the "Download model" button in the panel.
+which the user starts with the "Download model" button in the panel, and the log entries the user
+sends for review from the statistics page (below).
 
 ## Project structure
 See the *Architecture* section of `README.md`. Short version: `manifest.json`,
@@ -49,5 +50,12 @@ service worker, evaluators, config, i18n), `offscreen/` (hidden page hosting the
 - Do not edit `vendor/wllama/` by hand; change it only through `tools/vendor_wllama.py` (pinned SHA-512).
 - Do not add other third-party code or load code from the network (wllama's compatibility mode stays off).
 - Do not send page text anywhere other than the user-configured local AI endpoint or the built-in model.
+  The one exception is "Review by a larger model" on the statistics page (`stats/reviewer-*.js`): it
+  sends the texts of log entries — never addresses or verdicts — to the API the user configured, and
+  only after the user confirms each run. Never send anything automatically or in the background.
+  For a batch sent to the Claude API (`stats/reviewer-batch.js`) the open statistics page may ask
+  that API for the batch's state and answers, and "Fetch the list of models" asks the configured API
+  for its models; those requests must carry no text of the log.
+  The reviewer APIs are called with plain `fetch` (no SDK).
 - Do not widen the extension's CSP beyond `'wasm-unsafe-eval'`.
 - Do not commit packaged builds or keys (`*.zip`, `*.crx`, `*.pem`, `dist/`, `build/`).

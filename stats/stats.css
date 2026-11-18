@@ -609,3 +609,155 @@ summary:focus-visible {
     width: 100%;
   }
 }
+
+/* ---- review by an external model ---- */
+.hint--ok {
+  color: var(--ok);
+}
+
+.hint--error {
+  color: var(--error);
+}
+
+.filter--button {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.filter input.invalid {
+  border-color: var(--error);
+}
+
+.btn--primary {
+  border-color: transparent;
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #b9591a;
+  border-color: transparent;
+}
+
+.review__send,
+.review__running {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.review__send .hint {
+  margin: 0;
+}
+
+.review__running progress {
+  flex: 1 1 200px;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
+.confirm {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #ecc89c;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+.confirm p {
+  margin: 0 0 10px;
+}
+
+.filter input[hidden] {
+  display: none;
+}
+
+/* the batches Claude is reviewing: answered later */
+.review__batches {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.review__batches-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.review__batches-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.review__batches .hint {
+  margin: 6px 0 0;
+}
+
+.review__batches .mono {
+  font: 12px var(--mono);
+  word-break: break-all;
+}
+
+.batch__actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.batch__actions .link + .link {
+  margin-left: 10px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.confirm__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.review__summary {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.review__summary .link {
+  font-size: inherit;
+}
+
+.review__summary + .hint {
+  margin: 0 0 8px;
+}
+
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 6px 10px;
+  border-left: 3px solid var(--shown);
+  background: var(--shown-soft);
+  border-radius: 0 8px 8px 0;
+  font-size: 13px;
+}
+
+.suggestion__verdict {
+  font-weight: 700;
+}
+
+.suggestion__reason {
+  color: var(--muted);
+}

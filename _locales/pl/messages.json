@@ -1413,6 +1413,564 @@
       }
     }
   },
+  "reviewTitle": {
+    "message": "Ocena przez większy model",
+    "description": "Title of the card that sends entries to an external model."
+  },
+  "reviewLead": {
+    "message": "Wpisy możesz wysłać do zewnętrznego modelu (API zgodne z OpenAI albo Claude), który oceni je niezależnie i zaproponuje werdykt. Wysyłany jest tylko tekst wpisu i lista ukrywanych tematów — bez adresów stron. Nic nie jest wysyłane, dopóki tego nie potwierdzisz.",
+    "description": "Explanation of the review card (OpenAI and Claude are product names)."
+  },
+  "reviewEndpointLabel": {
+    "message": "Adres API",
+    "description": "Label of the field with the address of the API."
+  },
+  "reviewModelLabel": {
+    "message": "Model",
+    "description": "Label of the choice of the model, and of the model column in the table of batches."
+  },
+  "reviewKeyLabel": {
+    "message": "Klucz API",
+    "description": "Label of the field with the API key."
+  },
+  "reviewKeyHint": {
+    "message": "Klucz jest zapisany tylko w tej przeglądarce i nie trafia do kopii ustawień.",
+    "description": "Note under the API key field."
+  },
+  "reviewSave": {
+    "message": "Zapisz",
+    "description": "Button that saves the API address, model and key."
+  },
+  "reviewSaved": {
+    "message": "Zapisano.",
+    "description": "Confirmation after saving the API settings."
+  },
+  "reviewInvalidEndpoint": {
+    "message": "Podaj pełny adres http(s)://, np. $example$",
+    "description": "Validation error of the API address.",
+    "placeholders": {
+      "example": {
+        "content": "$1",
+        "example": "https://api.openai.com/v1"
+      }
+    }
+  },
+  "reviewNeedConfig": {
+    "message": "Podaj adres API i wybierz model, potem zapisz.",
+    "description": "Shown instead of the number of entries while the API is not configured."
+  },
+  "reviewNoTopics": {
+    "message": "Nie ukrywasz żadnego tematu, więc nie ma czego oceniać.",
+    "description": "Shown when no hidden topic is selected in the panel."
+  },
+  "reviewCandidates": {
+    "message": "Do wysłania: $count$ (wpisy z bieżącego filtra, z tekstem i bez propozycji; jednorazowo najwyżej $max$).",
+    "description": "How many entries a click would send.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "48"
+      },
+      "max": {
+        "content": "$2",
+        "example": "200"
+      }
+    }
+  },
+  "reviewSend": {
+    "message": "Wyślij do oceny…",
+    "description": "Button that opens the confirmation before sending."
+  },
+  "reviewConfirm": {
+    "message": "Wyślesz tekst $count$ wpisów (do 2000 znaków każdy) na $host$, do modelu $model$. Adresy stron i werdykty ParaBene nie są wysyłane.",
+    "description": "Confirmation before sending entries to the external model.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "48"
+      },
+      "host": {
+        "content": "$2",
+        "example": "api.openai.com"
+      },
+      "model": {
+        "content": "$3",
+        "example": "gpt-5"
+      }
+    }
+  },
+  "reviewConfirmSend": {
+    "message": "Wyślij",
+    "description": "Confirms sending."
+  },
+  "reviewCancel": {
+    "message": "Anuluj",
+    "description": "Cancels sending."
+  },
+  "reviewProgress": {
+    "message": "Oceniono $done$ z $total$ · błędy: $errors$",
+    "description": "Progress of a review run.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "48"
+      },
+      "errors": {
+        "content": "$3",
+        "example": "0"
+      }
+    }
+  },
+  "reviewStop": {
+    "message": "Przerwij",
+    "description": "Stops a review run."
+  },
+  "reviewDone": {
+    "message": "Gotowe: oceniono $done$, błędy: $errors$.",
+    "description": "Result of a finished review run.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "48"
+      },
+      "errors": {
+        "content": "$2",
+        "example": "0"
+      }
+    }
+  },
+  "reviewStopped": {
+    "message": "Przerwano: oceniono $done$ z $total$.",
+    "description": "Result of a review run the user stopped.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "48"
+      }
+    }
+  },
+  "reviewFailed": {
+    "message": "Przerwano: $error$ (oceniono $done$ z $total$).",
+    "description": "Result of a review run that an error stopped; the first placeholder is a reviewError_* message.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "the API refused the key (HTTP 401)"
+      },
+      "done": {
+        "content": "$2",
+        "example": "0"
+      },
+      "total": {
+        "content": "$3",
+        "example": "48"
+      }
+    }
+  },
+  "reviewError_auth": {
+    "message": "API odrzuciło klucz (HTTP $status$)",
+    "description": "Review error: authentication failed.",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "401"
+      }
+    }
+  },
+  "reviewError_rate": {
+    "message": "API ogranicza liczbę zapytań, spróbuj później",
+    "description": "Review error: rate limit."
+  },
+  "reviewError_http": {
+    "message": "API odpowiedziało HTTP $status$",
+    "description": "Review error: HTTP error status.",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "500"
+      }
+    }
+  },
+  "reviewError_unreachable": {
+    "message": "brak połączenia z API",
+    "description": "Review error: no connection."
+  },
+  "reviewError_invalid": {
+    "message": "odpowiedź modelu nie jest w oczekiwanym formacie",
+    "description": "Review error: the answer could not be read."
+  },
+  "reviewError_unknown": {
+    "message": "$detail$",
+    "description": "Review error without a message of its own.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "TypeError"
+      }
+    }
+  },
+  "reviewProviderLabel": {
+    "message": "Rodzaj API",
+    "description": "Label of the choice between the kinds of API the reviewer model is reached through."
+  },
+  "reviewProvider_openai": {
+    "message": "Zgodne z OpenAI",
+    "description": "Kind of API: any OpenAI-compatible chat completions API (OpenAI is a product name)."
+  },
+  "reviewProvider_claude": {
+    "message": "Claude (paczka)",
+    "description": "Kind of API: the Claude API, where all entries go as one batch answered later (Claude is a product name)."
+  },
+  "reviewNeedConfigClaude": {
+    "message": "Wybierz model i podaj klucz API, potem zapisz.",
+    "description": "Shown instead of the number of entries while the Claude API is not configured."
+  },
+  "reviewConfirmBatch": {
+    "message": "Wyślesz tekst $count$ wpisów (do 2000 znaków każdy) w jednej paczce na $host$, do modelu $model$. Adresy stron i werdykty ParaBene nie są wysyłane. Odpowiedź przyjdzie później, zwykle w ciągu godziny.",
+    "description": "Confirmation before sending entries to the Claude API as one batch.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "48"
+      },
+      "host": {
+        "content": "$2",
+        "example": "api.anthropic.com"
+      },
+      "model": {
+        "content": "$3",
+        "example": "claude-opus-5-5"
+      }
+    }
+  },
+  "reviewBatchSending": {
+    "message": "Wysyłanie paczki: $count$ wpisów…",
+    "description": "Shown while a batch is being sent.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "48"
+      }
+    }
+  },
+  "reviewBatchCheck": {
+    "message": "Sprawdź teraz",
+    "description": "Button that asks the API for the state of the batch."
+  },
+  "reviewBatchCancel": {
+    "message": "Anuluj",
+    "description": "Button that asks the API to stop the batch."
+  },
+  "reviewBatchCheckFailed": {
+    "message": "nie udało się sprawdzić: $error$",
+    "description": "Shown when a request about the batch failed; the placeholder is a reviewError_* message.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "the API refused the key (HTTP 401)"
+      }
+    }
+  },
+  "reviewBatchNotSent": {
+    "message": "Nie wysłano: $error$.",
+    "description": "Shown when the batch could not be created; the placeholder is a reviewError_* message.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "no connection to the API"
+      }
+    }
+  },
+  "reviewBatchFirstError": {
+    "message": "Pierwszy błąd: $detail$",
+    "description": "Added to the result of a batch with errors: the message of the first one, as the API gave it.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "model: claude-x not found"
+      }
+    }
+  },
+  "reviewError_api": {
+    "message": "API odpowiedziało HTTP $status$: $message$",
+    "description": "Review error: an HTTP error status with the API's own message.",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "401"
+      },
+      "message": {
+        "content": "$2",
+        "example": "invalid x-api-key"
+      }
+    }
+  },
+  "reviewModelCustom": {
+    "message": "Inna nazwa…",
+    "description": "Last choice in the list of models: a model name typed by hand."
+  },
+  "reviewModelCustomLabel": {
+    "message": "Nazwa modelu",
+    "description": "Accessible name of the field for a model name typed by hand."
+  },
+  "reviewModelsRefresh": {
+    "message": "Pobierz listę modeli",
+    "description": "Button that asks the API which models it has."
+  },
+  "reviewModelsFetched": {
+    "message": "Pobrano listę modeli: $count$.",
+    "description": "Confirmation after the list of models was fetched.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "reviewModelsFailed": {
+    "message": "Nie udało się pobrać listy modeli: $error$.",
+    "description": "Shown when the list of models could not be fetched; the placeholder is a reviewError_* message.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "the API refused the key (HTTP 401)"
+      }
+    }
+  },
+  "reviewModelHint": {
+    "message": "Model to ten, który oceni wpisy: większy jest zwykle trafniejszy i droższy. „Pobierz listę modeli” pyta API (podanym kluczem), jakie modele są dostępne.",
+    "description": "Note under the API settings explaining the choice of the model."
+  },
+  "reviewMissingModel": {
+    "message": "Wybierz model z listy albo wpisz jego nazwę.",
+    "description": "Validation error: no model chosen."
+  },
+  "reviewInvalidModel": {
+    "message": "Nazwa modelu Claude zaczyna się od „claude-”, np. $example$. Wybierz model z listy.",
+    "description": "Validation error: a typed model name the Claude API cannot know.",
+    "placeholders": {
+      "example": {
+        "content": "$1",
+        "example": "claude-opus-5-5"
+      }
+    }
+  },
+  "reviewBatchesTitle": {
+    "message": "Wysłane paczki",
+    "description": "Title of the table of batches sent to the Claude API."
+  },
+  "reviewBatchColId": {
+    "message": "ID paczki",
+    "description": "Column: the identifier the API gave the batch."
+  },
+  "reviewBatchColEntries": {
+    "message": "Wpisy",
+    "description": "Column: how many entries the batch contains."
+  },
+  "reviewBatchColSent": {
+    "message": "Wysłano",
+    "description": "Column: when the batch was sent."
+  },
+  "reviewBatchColStatus": {
+    "message": "Stan",
+    "description": "Column: the state of the batch."
+  },
+  "reviewBatchColActions": {
+    "message": "Działania",
+    "description": "Column (name for screen readers): buttons of the batch."
+  },
+  "reviewBatchStatus_in_progress": {
+    "message": "czeka na odpowiedź",
+    "description": "State of a batch: being processed."
+  },
+  "reviewBatchStatus_canceling": {
+    "message": "anulowanie…",
+    "description": "State of a batch the user cancelled, until the API has stopped it."
+  },
+  "reviewBatchStatus_ended": {
+    "message": "gotowa: oceniono $done$ z $total$, błędy: $errors$, bez odpowiedzi: $unanswered$",
+    "description": "State of a finished batch; unanswered = cancelled or not reached in time.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "48"
+      },
+      "total": {
+        "content": "$2",
+        "example": "48"
+      },
+      "errors": {
+        "content": "$3",
+        "example": "0"
+      },
+      "unanswered": {
+        "content": "$4",
+        "example": "0"
+      }
+    }
+  },
+  "reviewBatchRemove": {
+    "message": "Usuń z listy",
+    "description": "Button that takes a batch off the list (for a waiting one that cannot be reached, this gives up its answers)."
+  },
+  "reviewBatchHint": {
+    "message": "Odpowiedź przychodzi zwykle w ciągu godziny, najpóźniej po 24 godzinach. Strona sprawdza co minutę; możesz ją zamknąć i wrócić później. Wpisy z czekającej paczki nie są wysyłane ponownie.",
+    "description": "Note under the table of batches."
+  },
+  "reviewSummaryReviewed": {
+    "message": "Ocenione przez model: $count$",
+    "description": "Part of the summary of the review; also a button that lists these entries.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "48"
+      }
+    }
+  },
+  "reviewSummaryAgree": {
+    "message": "zgodne z ParaBene: $count$ ($percent$%)",
+    "description": "Part of the summary of the review; also a button that lists these entries.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "40"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "83"
+      }
+    }
+  },
+  "reviewSummaryOverHidden": {
+    "message": "ukryte, a model by pokazał: $count$",
+    "description": "Part of the summary of the review; also a button that lists these entries.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "reviewSummaryMissed": {
+    "message": "pokazane, a model by ukrył: $count$",
+    "description": "Part of the summary of the review; also a button that lists these entries.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewSummaryPending": {
+    "message": "do Twojej decyzji: $count$",
+    "description": "Part of the summary of the review; also a button that lists these entries.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "8"
+      }
+    }
+  },
+  "reviewSummaryShow": {
+    "message": "Pokaż te wpisy na liście",
+    "description": "Tooltip of a number in the summary of the review."
+  },
+  "reviewSummaryHint": {
+    "message": "Kliknij liczbę, aby zobaczyć te wpisy. To propozycje modelu: poprawką staje się dopiero ta, którą przyjmiesz, więc filtr „Poprawki” ich nie pokazuje.",
+    "description": "Note under the summary of the review."
+  },
+  "reviewAcceptAll": {
+    "message": "Przyjmij propozycje z bieżącego filtra ($count$)",
+    "description": "Button that accepts all undecided proposals among the filtered entries.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "reviewAcceptAllConfirm": {
+    "message": "Kliknij ponownie, aby przyjąć $count$",
+    "description": "The same button after the first click.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "reviewSuggestionHide": {
+    "message": "Model $model$: ukryć ($topic$)",
+    "description": "Proposal of the external model for an entry.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "gpt-5"
+      },
+      "topic": {
+        "content": "$2",
+        "example": "accident"
+      }
+    }
+  },
+  "reviewSuggestionShow": {
+    "message": "Model $model$: pokazać",
+    "description": "Proposal of the external model for an entry.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "gpt-5"
+      }
+    }
+  },
+  "reviewAgrees": {
+    "message": "zgodne z werdyktem",
+    "description": "The proposal equals the verdict ParaBene gave."
+  },
+  "reviewAccept": {
+    "message": "Przyjmij propozycję",
+    "description": "Makes the proposal the user’s correction."
+  },
+  "reviewReject": {
+    "message": "Odrzuć",
+    "description": "Rejects the proposal."
+  },
+  "reviewRejected": {
+    "message": "propozycja odrzucona",
+    "description": "A rejected proposal."
+  },
+  "reviewFilterLabel": {
+    "message": "Większy model",
+    "description": "Filter of entries by the external model’s proposal."
+  },
+  "reviewFilter_with": {
+    "message": "Z propozycją",
+    "description": "Filter option."
+  },
+  "reviewFilter_agree": {
+    "message": "Zgodne z werdyktem",
+    "description": "Filter of the entries: the model's proposal agrees with the verdict."
+  },
+  "reviewFilter_disagree": {
+    "message": "Niezgodne z werdyktem",
+    "description": "Filter option."
+  },
+  "reviewFilter_pending": {
+    "message": "Do mojej decyzji",
+    "description": "Filter option: disagreements neither accepted nor rejected."
+  },
+  "reviewFilter_without": {
+    "message": "Bez propozycji",
+    "description": "Filter option."
+  },
   "keywordsExport": {
     "message": "Eksportuj do pliku",
     "description": "Link that saves the keyword list to a text file."

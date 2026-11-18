@@ -28,6 +28,9 @@
  *   text      the evaluated text (at most Config.LOG_MAX_TEXT characters)
  *   label     "hide" | "show": the user's correction (what the verdict should have been);
  *             absent when not corrected. Labelled records are not removed when the log is full.
+ *   suggestion  what an external reviewer model proposed, when the user sent the record to one
+ *             (stats/reviewer-*.js): { verdict: "hide" | "show", topic, reason, model, time,
+ *             rejected? } — a proposal; accepting it sets `label`, rejecting it sets `rejected`
  */
 (function (root) {
   'use strict';
@@ -358,6 +361,24 @@
     return record || null;
   }
 
+  /**
+   * Changes one record: `change(record)` edits it in place (synchronously). Resolves with the
+   * changed record, or null when it no longer exists.
+   */
+  async function update(id, change) {
+    const db = await open();
+    const transaction = db.transaction(STORE, 'readwrite');
+    const store = transaction.objectStore(STORE);
+    const record = await done(store.get(id));
+    if (record) {
+      change(record);
+      store.put(record);
+    }
+    await finished(transaction);
+    if (record) notify();
+    return record || null;
+  }
+
   async function clear() {
     const db = await open();
     const transaction = db.transaction(STORE, 'readwrite');
@@ -422,6 +443,7 @@
     markRevealed,
     trimUrls,
     setLabel,
+    update,
     clear,
     all,
     counts,

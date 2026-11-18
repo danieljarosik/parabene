@@ -3,9 +3,11 @@
  *
  * A correction ("should be hidden" / "should not be hidden") is stored with the entry
  * (Store.setLabel) and exported with the log. It does not change the filtering.
+ * An entry that was sent to the external reviewer model also shows its proposal (suggestions.js).
  */
 import { Store, ctx, t } from './context.js';
 import { dateTime, decimal, el, kindOf, number, reasonOf, siteRows, topicName } from './format.js';
+import { matchesSuggestion, suggestionNode } from './suggestions.js';
 
 const PAGE_SIZE = 50;
 
@@ -15,6 +17,7 @@ const controls = {
   source: $('filter-source'),
   site: $('filter-site'),
   label: $('filter-label'),
+  suggestion: $('filter-suggestion'),
   search: $('filter-search'),
 };
 const found = $('found');
@@ -44,6 +47,7 @@ function matches(record) {
   if (filters.site && record.host !== filters.site) return false;
   if (filters.label === 'corrected' && !record.label) return false;
   if (filters.label === 'uncorrected' && record.label) return false;
+  if (!matchesSuggestion(record, filters.suggestion)) return false;
   if (filters.search) {
     const haystack = `${record.text}\n${record.url}\n${record.reason}`.toLocaleLowerCase(ctx.i18n.locale);
     if (!haystack.includes(filters.search)) return false;
@@ -152,8 +156,14 @@ function entryNode(record) {
   item.dataset.id = String(record.id);
   item.append(headNode(record), ...textNodes(record, item));
   if (record.details && record.details.probabilities) item.append(probabilitiesNode(record.details));
+  if (record.suggestion) item.append(suggestionNode(record));
   item.append(footNode(record));
   return item;
+}
+
+/** The records the filters let through, newest first. */
+export function matchingRecords() {
+  return ctx.records.filter(matches);
 }
 
 function renderSiteFilter() {
@@ -165,7 +175,7 @@ function renderSiteFilter() {
 
 function renderList() {
   const { records } = ctx;
-  const matching = records.filter(matches);
+  const matching = matchingRecords();
   const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
   ctx.page = Math.min(ctx.page, pages - 1);
   const from = ctx.page * PAGE_SIZE;
@@ -195,6 +205,18 @@ export function showSite(host) {
   controls.site.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+/**
+ * Shows the entries of these filters alone (the filters not named are cleared) and brings the
+ * list into view.
+ */
+export function showEntries(filters) {
+  Object.assign(ctx.filters, { verdict: 'all', source: 'all', site: '', label: 'all', suggestion: 'all', search: '' }, filters);
+  for (const key of Object.keys(controls)) controls[key].value = ctx.filters[key];
+  ctx.page = 0;
+  ctx.render(); // other parts of the page count the filtered entries too
+  found.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 /** After the log was cleared. */
 export function resetEntries() {
   expanded.clear();
@@ -207,13 +229,14 @@ export function bindEntries() {
     control.addEventListener(control.type === 'search' ? 'input' : 'change', () => {
       ctx.filters[key] = read(control.value);
       ctx.page = 0;
-      renderList();
+      ctx.render(); // other parts of the page count the filtered entries too
     });
   };
   onFilter('verdict');
   onFilter('source');
   onFilter('site');
   onFilter('label');
+  onFilter('suggestion');
   onFilter('search', (value) => value.trim().toLocaleLowerCase(ctx.i18n.locale));
   const turn = (step) => {
     ctx.page = Math.max(0, ctx.page + step);
