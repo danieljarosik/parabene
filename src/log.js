@@ -77,12 +77,14 @@
    * On install and update. The switch of versions up to 1.0 (`logEnabled`) covered hidden content
    * only, so it does not turn on this log, which records everything evaluated: it is removed and
    * the user turns the new log on if they want it. The entries recorded with it are moved into the
-   * database so they can be seen and cleared on the statistics page.
+   * database so they can be seen and cleared on the statistics page. Page addresses recorded in
+   * full by earlier builds are cut to the address without query and fragment.
    */
   function migrate() {
     const moved = writing.then(async () => {
       await chrome.storage.local.remove(Config.LOG_OLD_SETTING);
       await moveOldLog();
+      await Store.trimUrls();
     });
     writing = moved.catch((err) => console.warn('[ParaBene] Failed to move the old log:', err));
     return writing;

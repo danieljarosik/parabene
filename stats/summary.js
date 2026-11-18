@@ -28,8 +28,14 @@ function renderTiles() {
     tile(t('statsTileCorrected'), number(corrected)),
   ];
   if (total) {
-    const oldest = records[records.length - 1].time;
-    const newest = records[0].lastTime || records[0].time;
+    // The first evaluation of any record and the last one of any record.
+    let oldest = records[0].time;
+    let newest = records[0].lastTime || records[0].time;
+    for (const record of records) {
+      if (Date.parse(record.time) < Date.parse(oldest)) oldest = record.time;
+      const last = record.lastTime || record.time;
+      if (Date.parse(last) > Date.parse(newest)) newest = last;
+    }
     const sites = t('statsSites', number(siteRows(records).length));
     nodes.push(tile(t('statsTilePeriod'), `${day(oldest)} – ${day(newest)}`, sites, true));
   }

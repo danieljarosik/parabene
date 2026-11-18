@@ -8,7 +8,6 @@ import { Store, ctx, t } from './context.js';
 import { dateTime, decimal, el, kindOf, number, reasonOf, siteRows, topicName } from './format.js';
 
 const PAGE_SIZE = 50;
-const LONG_TEXT = 240;
 
 const $ = (id) => document.getElementById(id);
 const controls = {
@@ -26,6 +25,16 @@ const older = $('older');
 const pageInfo = $('page-info');
 /** Ids of the entries shown in full. */
 const expanded = new Set();
+/**
+ * A clamped text gets its "more" button only when the clamp actually cuts it, which depends on
+ * the width of the page: checked when the text is laid out and whenever its size changes.
+ */
+const clamped = new ResizeObserver((entries) => {
+  for (const { target } of entries) {
+    const more = target.nextElementSibling;
+    if (more) more.hidden = target.scrollHeight <= target.clientHeight;
+  }
+});
 
 function matches(record) {
   const { filters } = ctx;
@@ -88,18 +97,20 @@ function headNode(record) {
 function textNodes(record, item) {
   if (!record.text) return [el('p', 'entry__text entry__text--none', t('statsNoText'))];
   const full = expanded.has(record.id);
-  const nodes = [el('p', full ? 'entry__text' : 'entry__text entry__text--clamped', record.text)];
-  if (record.text.length > LONG_TEXT) {
-    const more = el('button', 'link', t(full ? 'statsLess' : 'statsMore'));
-    more.type = 'button';
-    more.addEventListener('click', () => {
-      if (expanded.has(record.id)) expanded.delete(record.id);
-      else expanded.add(record.id);
-      item.replaceWith(entryNode(record));
-    });
-    nodes.push(more);
+  const text = el('p', full ? 'entry__text' : 'entry__text entry__text--clamped', record.text);
+  const more = el('button', 'link', t(full ? 'statsLess' : 'statsMore'));
+  more.type = 'button';
+  more.addEventListener('click', () => {
+    if (expanded.has(record.id)) expanded.delete(record.id);
+    else expanded.add(record.id);
+    clamped.unobserve(text);
+    item.replaceWith(entryNode(record));
+  });
+  if (!full) {
+    more.hidden = true;
+    clamped.observe(text);
   }
-  return nodes;
+  return [text, more];
 }
 
 /** The model's probability for each topic, the highest first, and the model's name. */
@@ -159,6 +170,7 @@ function renderList() {
   ctx.page = Math.min(ctx.page, pages - 1);
   const from = ctx.page * PAGE_SIZE;
   const slice = matching.slice(from, from + PAGE_SIZE);
+  clamped.disconnect();
   found.textContent = records.length ? t('statsFound', [number(matching.length), number(records.length)]) : '';
   if (slice.length === 0) list.replaceChildren(el('li', 'empty', t(records.length ? 'statsNoMatch' : 'statsEmpty')));
   else list.replaceChildren(...slice.map(entryNode));

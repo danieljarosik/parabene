@@ -27,9 +27,13 @@ function render() {
   renderEntries();
 }
 
+/** When a record was last evaluated, as a number for sorting. */
+const lastSeen = (record) => Date.parse(record.lastTime || record.time) || 0;
+
+/** The records, the most recently evaluated first (a record seen again moves to the top). */
 async function readRecords() {
   try {
-    ctx.records = (await Store.all()).reverse();
+    ctx.records = (await Store.all()).sort((a, b) => lastSeen(b) - lastSeen(a) || b.id - a.id);
   } catch (err) {
     ctx.records = [];
     showFailure(t('statsReadFailed', err && err.message ? err.message : String(err)));

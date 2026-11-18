@@ -590,7 +590,7 @@ Asking about several pictures in one request is not faster (~1.5 s each) and blu
 
 Turn on **Record evaluated content** (*Zapisuj ocenione treści*) in the panel or on the statistics page (or set `PARABENE_EVAL_LOG_ENABLED=true` in `.env`) to see what ParaBene does while you browse and to collect material for tuning the keywords, the sensitivity and the topics. It is off by default, also after an update from a version that had **Record hidden content** (*Zapisuj ukryte treści*) on: that switch (`logEnabled`) covered hidden content only, so it is not carried over to this log, which records much more, and neither is its value in an older settings backup or `PARABENE_LOG_ENABLED` in `.env`.
 
-**What is recorded.** Every text that is evaluated, whether it ends up hidden or shown, with the page address (without the part after `?` or `#`, which can hold tokens, session ids or searches), who decided (keywords, the AI text model, keywords while the AI model was unavailable) and, for the AI model, its score, threshold and probabilities per topic. A picture is recorded when it hides its container. The same text judged the same way again (a page reload) is one entry with a count. Nothing is recorded from private windows or from **Excluded sites** (*Wykluczone witryny*), and nothing from before the switch was turned on. Entries recorded on a site before it was excluded stay until the log is cleared.
+**What is recorded.** Every text that is evaluated, whether it ends up hidden or shown, with the page address (without the part after `?` or `#`, which can hold tokens, session ids or searches), who decided (keywords, the AI text model, keywords while the AI model was unavailable) and, for the AI model, its score, threshold and probabilities per topic. A picture is recorded when it hides its container. The same text judged the same way on the same site again (a page reload) is one entry with a count; a different score, threshold, model or reason makes a new entry. Nothing is recorded from private windows or from **Excluded sites** (*Wykluczone witryny*), and nothing from before the switch was turned on. Entries recorded on a site before it was excluded stay until the log is cleared.
 
 **Where it is kept.** In IndexedDB in the extension's own storage (`src/store.js`), written by the service worker in batches once a second (`src/log.js`). The newest 10,000 entries are kept, each text capped at 2,000 characters; corrected entries are not removed when the log is full. There is no time limit. It never leaves the browser except as a file you download. The log of hidden content that versions up to 1.0 kept in `chrome.storage.local` (key `hideLog`) is moved into it when the extension is updated, so it can be seen and cleared on the statistics page.
 
@@ -600,7 +600,7 @@ Turn on **Record evaluated content** (*Zapisuj ocenione treści*) in the panel o
 - **Who decided** (*Kto zdecydował*): evaluated, hidden, shown and corrected per source;
 - **Scores of the AI model** (*Wyniki modelu AI*): how many texts fall into each tenth of the hide score, hidden and shown, with the current threshold as a line — it shows what another sensitivity would change;
 - **Sites** (*Strony*): evaluated, hidden and the share hidden on each site; a click filters the entries to that site;
-- **Entries** (*Wpisy*), newest first, 50 per page, filtered by verdict, source, site, corrections and a search in the text and address. Each entry shows the verdict, the reason, the score with the threshold at that time, the probabilities, the text, and whether you clicked **Show anyway**, whether learning let it through and how often it was seen.
+- **Entries** (*Wpisy*), the most recently seen first, 50 per page, filtered by verdict, source, site, corrections and a search in the text and address. Each entry shows the verdict, the reason, the score with the threshold at that time, the probabilities, the text, and whether you clicked **Show anyway**, whether learning let it through and how often it was seen.
 
 The page follows new evaluations while it is open, and the UI language.
 
@@ -618,7 +618,7 @@ The page follows new evaluations while it is open, and the UI language.
 | Field | Meaning |
 | --- | --- |
 | `type` | `hidden` or `shown`: the verdict. |
-| `count`, `time`, `lastTime` | How often this text got this verdict, when first and when last. |
+| `count`, `time`, `lastTime` | How often this text got this verdict on this site, when first and when last. |
 | `label`, `labelTime` | Your correction, when there is one: `show` (should not have been hidden) or `hide` (should have been hidden). |
 | `learned` | `true` when the verdict was "hide" but a learned example let the content through. |
 | `source` | `keyword` — decided by the phrase list; `ai` — decided by the AI model (the text model, or the image model when `media` is `"image"`). |
@@ -628,7 +628,7 @@ The page follows new evaluations while it is open, and the UI language.
 | `fallback` | `true` when keywords decided because the AI server was unavailable. |
 | `revealed` | `true` when you clicked **Show anyway** (*Pokaż mimo wszystko*), usually a false positive. |
 | `details` | AI only, for hidden and shown texts: the hide `score`, the `threshold`, basal's `probabilities` per topic and the `model` name. |
-| `media`, `image` | Only for items hidden because of a picture: `"image"` and the picture's address (a `data:` URL is reduced to its type). Such items are recorded once per picture. |
+| `media`, `image` | Only for items hidden because of a picture: `"image"` and the picture's address (a `data:` URL is reduced to its type and a fingerprint of its data, e.g. `data:image/png#1f3a…`). Such items are recorded once per picture. |
 | `text` | The text that was evaluated (the AI model received at most its first 2,000 characters). |
 
 ---

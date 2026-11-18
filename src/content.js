@@ -357,9 +357,9 @@
         const known = state.hiddenItems.get(el);
         hide(el, result);
         state.hiddenItems.set(el, { text });
-        // Logged once per content: again when hidden for another reason, or when the page reused
-        // the element for other content.
-        const sameItem = previous === hiddenSource(el) && !byImage && known && sameContent(known.text || '', text);
+        // Logged once per text: again when hidden for another reason or when the text changed at
+        // all (the log and "Show anyway" then refer to the text that was judged last).
+        const sameItem = previous === hiddenSource(el) && !byImage && known && known.text === text;
         if (!sameItem) logVerdict(text, result);
       } else {
         // A container hidden because of its picture stays hidden until the picture is judged again.

@@ -13,13 +13,15 @@
  *
  * Record:
  *   id        auto-incremented; a higher id is a newer record
- *   key       SHA-256 of what identifies the content and its verdict (see keyText): the same
- *             text judged the same way again (a page reload) updates the record instead of
- *             adding one — `count` and `lastTime` tell how often and when last
+ *   key       SHA-256 of what identifies the content, its site and its verdict with everything
+ *             recorded about it (see keyText): the same text judged the same way on the same site
+ *             again (a page reload) updates the record instead of adding one — `count` and
+ *             `lastTime` tell how often and when last
  *   time, lastTime   ISO timestamps of the first and the last evaluation
  *   url, host   the page's address without its query and fragment (see pageUrl), its host
  *   hidden    1 | 0 (a number, so it can be indexed)
- *   source    "keyword" | "ai";  media: "image" + image (address) for a verdict about a picture
+ *   source    "keyword" | "ai";  media: "image" + image (address) for a verdict about a picture;
+ *             a data: picture is recorded as its type and a fingerprint of its data (imageUrl)
  *   mode      "keywords" | "both" | "ai" at the time
  *   reason, category, fallback, details { score, threshold, probabilities, model }
  *   revealed  the user clicked "Show anyway";  learned: hidden but let through by a learned example
@@ -100,13 +102,28 @@
   /* ---------------- identity of a record ---------------- */
 
   /**
-   * The same content with the same verdict is one record. A picture verdict is identified by the
-   * picture (a data: picture is logged as its type only, so the text tells such pictures apart).
+   * The same content on the same site with the same verdict is one record. The verdict is
+   * everything the record says about it, so a fallback to keywords, another model, threshold or
+   * score (to the two decimals shown) is a record of its own and the statistics keep its numbers.
+   * A picture verdict is identified by the picture.
    */
   function keyText(entry) {
-    const verdict = `${entry.source}\n${entry.hidden ? 'hidden' : 'shown'}`;
-    if (!entry.image) return `${verdict}\n${entry.text}`;
-    return entry.image.startsWith('data:') ? `image\n${entry.image}\n${entry.text}` : `image\n${entry.image}`;
+    const details = entry.details || {};
+    const decimals = (value) => (typeof value === 'number' ? value.toFixed(2) : '');
+    return [
+      'v2',
+      entry.host,
+      entry.source,
+      entry.hidden ? 'hidden' : 'shown',
+      entry.fallback ? 'fallback' : '',
+      entry.mode,
+      entry.reason,
+      entry.category,
+      details.model || '',
+      decimals(details.score),
+      decimals(details.threshold),
+      entry.image ? `image\n${entry.image}` : `text\n${entry.text}`,
+    ].join('\n');
   }
 
   async function keyOf(entry) {
@@ -115,11 +132,28 @@
     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
   }
 
-  /** Picture address for the log: a data: URL is replaced by its type (it can be megabytes long). */
+  /**
+   * Picture address for the log. A data: URL (it can be megabytes long) is replaced by its type and
+   * a fingerprint of the whole URL, so two such pictures stay two records, e.g. "data:image/png#…".
+   */
   function imageUrl(value) {
     const url = String(value || '');
-    if (url.startsWith('data:')) return url.split(/[;,]/)[0].slice(0, 100);
+    if (url.startsWith('data:')) return `${url.split(/[;,]/)[0].slice(0, 100)}#${fingerprint(url)}`;
     return url.slice(0, 1000);
+  }
+
+  /** A 53-bit hash of a string as hex (cyrb53): synchronous, as sanitize is. */
+  function fingerprint(value) {
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+    for (let i = 0; i < value.length; i += 1) {
+      const code = value.charCodeAt(i);
+      h1 = Math.imul(h1 ^ code, 2654435761);
+      h2 = Math.imul(h2 ^ code, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0');
   }
 
   /**
@@ -239,19 +273,68 @@
     return added;
   }
 
-  /** Marks the record of a hidden content the user chose to see ("Show anyway"). */
+  /**
+   * Marks the record of a hidden content the user chose to see ("Show anyway"): the newest hidden
+   * record of that text (or picture) from that source on that site. The page does not send the
+   * verdict's numbers back, so the record is found by its content, not by its key.
+   */
   async function markRevealed(entry) {
-    const key = await keyOf(Object.assign({}, entry, { hidden: 1 }));
+    const same = (record) =>
+      record.host === entry.host &&
+      record.source === entry.source &&
+      (entry.image ? record.image === entry.image : !record.image && record.text === entry.text);
     const db = await open();
     const transaction = db.transaction(STORE, 'readwrite');
-    const store = transaction.objectStore(STORE);
-    const record = await done(store.index('key').get(key));
-    if (record && !record.revealed) {
-      record.revealed = true;
-      store.put(record);
-    }
+    const index = transaction.objectStore(STORE).index('hidden');
+    let changed = false;
+    await new Promise((resolve, reject) => {
+      // Newest first: within one index value the records are in the order of their ids.
+      const cursorRequest = index.openCursor(IDBKeyRange.only(1), 'prev');
+      cursorRequest.onerror = () => reject(cursorRequest.error);
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return resolve();
+        if (!same(cursor.value)) return cursor.continue();
+        if (!cursor.value.revealed) {
+          cursor.update(Object.assign({}, cursor.value, { revealed: true }));
+          changed = true;
+        }
+        resolve();
+      };
+    });
     await finished(transaction);
-    if (record) notify();
+    if (changed) notify();
+  }
+
+  /**
+   * On install and update. The first builds with this database recorded the full page address,
+   * query and fragment included (they can hold tokens or searches): it is cut to what pageUrl
+   * keeps. Does not create the database when there is none.
+   */
+  async function trimUrls() {
+    if (typeof indexedDB.databases === 'function') {
+      const names = (await indexedDB.databases()).map((info) => info.name);
+      if (!names.includes(DB_NAME)) return;
+    }
+    const db = await open();
+    const transaction = db.transaction(STORE, 'readwrite');
+    let changed = false;
+    await new Promise((resolve, reject) => {
+      const cursorRequest = transaction.objectStore(STORE).openCursor();
+      cursorRequest.onerror = () => reject(cursorRequest.error);
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return resolve();
+        const url = pageUrl(cursor.value.url);
+        if (url !== cursor.value.url) {
+          cursor.update(Object.assign({}, cursor.value, { url, host: hostOf(url) }));
+          changed = true;
+        }
+        cursor.continue();
+      };
+    });
+    await finished(transaction);
+    if (changed) notify();
   }
 
   /** The user's correction: "hide" | "show", or null to take it back. Resolves with the record. */
@@ -337,6 +420,7 @@
     sanitize,
     add,
     markRevealed,
+    trimUrls,
     setLabel,
     clear,
     all,

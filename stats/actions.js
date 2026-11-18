@@ -28,7 +28,7 @@ function saveFile(name, text, type) {
 function download() {
   if (ctx.records.length === 0) return;
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
-  const oldestFirst = [...ctx.records].reverse();
+  const oldestFirst = [...ctx.records].sort((a, b) => a.id - b.id); // in the order recorded
   const file = Store.toJsonl(oldestFirst, ctx.settings, chrome.runtime.getManifest().version);
   saveFile(`parabene-log-${stamp}.jsonl`, file, 'application/x-ndjson');
 }
