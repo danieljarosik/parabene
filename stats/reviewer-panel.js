@@ -14,8 +14,8 @@ import { number } from './format.js';
 import { matchingRecords } from './entries.js';
 import { BATCH_MAX, initBatches, isSending, renderBatches, resumeBatches, sendBatch, waitingEntries } from './reviewer-batch.js';
 import {
-  DEFAULT_ENDPOINTS, DEFAULT_MODELS, DEFAULT_PROVIDER, PROVIDERS, hostOf, isComplete, isValidEndpoint, isValidModel, loadReviewer,
-  saveReviewer,
+  DEFAULT_ENDPOINTS, DEFAULT_MODELS, DEFAULT_PROVIDER, PROVIDERS, STORAGE_KEY, hostOf, isComplete, isValidEndpoint, isValidModel,
+  keyFor, loadReviewer, originOf, saveReviewer,
 } from './reviewer-config.js';
 import { chosenModel, initModels, markInvalidModel, refreshModels, renderModels, showModels } from './reviewer-models.js';
 import { review, reviewTopics } from './reviewer-client.js';
@@ -55,6 +55,16 @@ const els = {
 let config = { provider: DEFAULT_PROVIDER, endpoint: '', model: '', apiKey: '' };
 /** The run in progress: { controller, done, errors, total } or null. */
 let run = null;
+/**
+ * What the open confirmation names: { config, records, topics }, or null when it is closed.
+ * "Send" sends exactly this, whatever changed on the page meanwhile.
+ */
+let offer = null;
+/**
+ * The kind of API and the server ({ provider, origin }) the key in the form belongs to: the one the
+ * form pointed at when the key was typed, or the saved one for the saved key.
+ */
+let keyScope = { provider: '', origin: '' };
 let resultText = '';
 let resultKind = '';
 let acceptArmedTimer = 0;
@@ -103,6 +113,48 @@ function onProviderChanged(model = '') {
   els.endpoint.placeholder = DEFAULT_ENDPOINTS[provider];
   els.endpoint.classList.remove('invalid');
   showModels(provider, readForm().endpoint, model);
+  syncKey();
+}
+
+const scopeOf = (form) => ({ provider: form.provider, origin: originOf(form.endpoint) });
+
+/**
+ * A key goes only to the server it belongs to (`keyScope`). When the form points at another kind
+ * of API or another server, the key in the field — saved or typed — is replaced by the key saved
+ * for that one, or emptied, so neither "Fetch the list of models" nor "Save" sends it there; the
+ * saved key comes back when the form points at the saved server again. A key typed before any
+ * address was entered belongs to the first address entered. Returns true when a key was taken out
+ * of the field (the caller then sends nothing).
+ */
+function syncKey() {
+  const form = readForm();
+  const scope = scopeOf(form);
+  if (scope.provider === keyScope.provider && scope.origin === keyScope.origin) return false;
+  if (form.apiKey && scope.provider === keyScope.provider && !keyScope.origin) {
+    keyScope = scope;
+    return false;
+  }
+  const saved = keyFor(config, form.provider, form.endpoint);
+  const dropped = Boolean(form.apiKey) && form.apiKey !== saved;
+  els.key.value = saved;
+  keyScope = scope;
+  if (dropped) showSaved(t('reviewKeyCleared'), '');
+  return dropped;
+}
+
+/** Puts the saved settings into the form. */
+function fillForm() {
+  els.provider.value = config.provider;
+  els.endpoint.value = config.endpoint;
+  els.key.value = config.apiKey;
+  keyScope = scopeOf(readForm());
+  onProviderChanged(config.model);
+}
+
+/** The form shows the saved settings `value`, unchanged. */
+function formShows(value) {
+  const form = readForm();
+  return ['provider', 'endpoint', 'model', 'apiKey'].every((field) => form[field] === value[field]);
 }
 
 /** The address in the form, or false after marking it as not one. */
@@ -115,6 +167,7 @@ function checkedEndpoint(form) {
 
 /** Asks the API in the form (saved or not) which models it has. */
 async function fetchModels() {
+  if (syncKey()) return; // the key in the field was for another server
   const form = readForm();
   if (!checkedEndpoint(form)) return;
   els.refresh.disabled = true;
@@ -127,6 +180,7 @@ async function fetchModels() {
 }
 
 async function save() {
+  if (syncKey()) return false; // the key in the field was for another server
   const form = readForm();
   if (!checkedEndpoint(form)) return false;
   if (!isValidModel(form.provider, form.model)) {
@@ -134,8 +188,10 @@ async function save() {
     showSaved(form.model ? t('reviewInvalidModel', DEFAULT_MODELS.claude) : t('reviewMissingModel'), 'error');
     return false;
   }
+  closeConfirm(); // it named the settings saved before
   config = await saveReviewer(form);
   els.endpoint.value = config.endpoint;
+  keyScope = scopeOf(readForm());
   showSaved(t('reviewSaved'), 'ok');
   renderReviewer();
   return true;
@@ -144,7 +200,7 @@ async function save() {
 function showSaved(text, kind) {
   clearTimeout(savedTimer);
   els.saved.textContent = text;
-  els.saved.className = `hint hint--${kind}`;
+  els.saved.className = kind ? `hint hint--${kind}` : 'hint';
   savedTimer = setTimeout(() => {
     els.saved.textContent = '';
   }, kind === 'error' ? 15000 : 5000);
@@ -155,11 +211,13 @@ function showResult(text, kind) {
   resultKind = kind;
 }
 
-/** Asks the reviewer about `records`, a few at a time, and stores each proposal as it arrives. */
-async function start(records) {
+/**
+ * Asks the reviewer at `target` (the settings the confirmation named) about `records`, a few at a
+ * time, with the topics `asked`, and stores each proposal as it arrives.
+ */
+async function start(records, target, asked) {
   const controller = new AbortController();
   const state = { strict: true };
-  const asked = topics();
   run = { controller, done: 0, errors: 0, total: records.length };
   showResult('', '');
   renderReviewer();
@@ -170,8 +228,8 @@ async function start(records) {
     while (queue.length && !controller.signal.aborted) {
       const record = queue.shift();
       try {
-        const answer = await review(config, record.text, asked, { signal: controller.signal, state });
-        const suggestion = Object.assign(answer, { model: config.model, time: new Date().toISOString() });
+        const answer = await review(target, record.text, asked, { signal: controller.signal, state });
+        const suggestion = Object.assign(answer, { model: target.model, time: new Date().toISOString() });
         const saved = await Store.update(record.id, (stored) => {
           stored.suggestion = suggestion;
         });
@@ -219,7 +277,9 @@ export function renderReviewer() {
   renderModels();
   renderBatches();
   els.running.hidden = !run;
-  if (run) els.confirm.hidden = true;
+  if (run) closeConfirm();
+  // the log was read again: an entry the confirmation names may be gone or reviewed meanwhile
+  if (offer && !isStillOffered(offer, ctx.records)) expireConfirm();
   renderProgress();
 
   els.result.hidden = !resultText;
@@ -232,17 +292,93 @@ export function renderReviewer() {
   if (stats.reviewed) renderAgreement(els.summary, stats);
   const pending = matchingRecords().filter(isPending).length;
   els.acceptAll.hidden = pending === 0 || Boolean(run);
-  if (isSending()) els.confirm.hidden = true;
+  if (isSending()) closeConfirm();
   if (!acceptArmedTimer) els.acceptAll.textContent = t('reviewAcceptAll', number(pending));
 }
 
+/**
+ * Opens the confirmation. What it names — the entries, the server, the model and the topics — is
+ * taken now and is what "Send" sends: a filter changed, entries logged or settings edited
+ * meanwhile do not change it. Saving other settings (here or in another tab) closes it, and so
+ * does an entry it names that is no longer to be sent (see isStillOffered).
+ */
 function askToSend() {
-  const count = candidates().length;
-  if (count === 0) return;
-  const key = isBatched() ? 'reviewConfirmBatch' : 'reviewConfirm';
-  els.confirmText.textContent = t(key, [number(count), hostOf(config.endpoint), config.model]);
+  const records = candidates();
+  if (records.length === 0) return;
+  offer = { config: Object.assign({}, config), records, topics: topics() };
+  const key = offer.config.provider === 'claude' ? 'reviewConfirmBatch' : 'reviewConfirm';
+  els.confirmText.textContent = t(key, [number(records.length), hostOf(offer.config.endpoint), offer.config.model]);
   els.confirm.hidden = false;
   els.confirmSend.focus();
+}
+
+function closeConfirm() {
+  offer = null;
+  els.confirm.hidden = true;
+}
+
+/** Closes the confirmation because what it names can no longer be sent; nothing was sent. */
+function expireConfirm() {
+  closeConfirm();
+  showResult(t('reviewConfirmExpired'), 'error');
+}
+
+/**
+ * Every entry the confirmation names is still in the log (`records`), with the same text, without
+ * a proposal and not waiting in a batch (sent from another tab meanwhile) — and the saved settings
+ * are still the ones it names.
+ */
+function isStillOffered(named, records) {
+  if (!['provider', 'endpoint', 'model', 'apiKey'].every((field) => named.config[field] === config[field])) return false;
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const waiting = waitingEntries();
+  return named.records.every((record) => {
+    const now = byId.get(record.id);
+    return Boolean(now) && now.text === record.text && !now.suggestion && !waiting.has(record.id);
+  });
+}
+
+/**
+ * "Send" in the confirmation: sends what it named, once — after reading the log again, so an entry
+ * removed (e.g. by clearing the log in another tab) or reviewed meanwhile is never sent.
+ */
+async function confirmSend() {
+  if (!offer || run || isSending()) return;
+  const named = offer;
+  closeConfirm();
+  let records;
+  try {
+    records = await Store.all();
+  } catch (err) {
+    ctx.fail(t('statsReadFailed', err && err.message ? err.message : String(err)));
+    return;
+  }
+  if (!isStillOffered(named, records)) {
+    expireConfirm();
+    ctx.reload();
+    return;
+  }
+  if (run || isSending()) return;
+  const { config: target, records: chosen, topics: asked } = named;
+  if (target.provider === 'claude') sendBatch(target, chosen, asked);
+  else start(chosen, target, asked);
+}
+
+/**
+ * The settings were saved in another statistics page: the batches are checked with them from now
+ * on (an old key is not used any more), the confirmation that named the old ones is closed, and the
+ * form shows them unless it holds changes not saved yet.
+ */
+async function onReviewerChanged(changes, area) {
+  if (area !== 'local' || !(STORAGE_KEY in changes)) return;
+  const previous = config;
+  const next = await loadReviewer();
+  if (['provider', 'endpoint', 'model', 'apiKey'].every((field) => next[field] === previous[field])) return; // this page's own save
+  const untouched = formShows(previous);
+  config = next;
+  if (untouched) fillForm();
+  if (offer) expireConfirm();
+  ctx.render();
 }
 
 /** The first click arms the button, a second one within a few seconds accepts the proposals. */
@@ -268,26 +404,26 @@ async function acceptFiltered() {
 
 export async function initReviewer() {
   config = await loadReviewer();
-  els.provider.value = config.provider;
-  els.endpoint.value = config.endpoint;
-  els.key.value = config.apiKey;
   await initModels();
-  onProviderChanged(config.model);
+  fillForm();
   els.provider.addEventListener('change', () => onProviderChanged());
   els.save.addEventListener('click', save);
   els.refresh.addEventListener('click', fetchModels);
   els.endpoint.addEventListener('input', () => els.endpoint.classList.remove('invalid'));
-  // a list fetched from another address does not describe this one
-  els.endpoint.addEventListener('change', () => showModels(readForm().provider, readForm().endpoint, chosenModel()));
+  // When the address is entered (not on every character typed): a list fetched from another address
+  // does not describe this one, and a key belongs to its server.
+  els.endpoint.addEventListener('change', () => {
+    showModels(readForm().provider, readForm().endpoint, chosenModel());
+    syncKey();
+  });
+  // a key typed belongs to the kind of API and the server in the form at that moment
+  els.key.addEventListener('input', () => {
+    keyScope = scopeOf(readForm());
+  });
+  chrome.storage.onChanged.addListener(onReviewerChanged);
   els.send.addEventListener('click', askToSend);
-  els.confirmCancel.addEventListener('click', () => {
-    els.confirm.hidden = true;
-  });
-  els.confirmSend.addEventListener('click', () => {
-    els.confirm.hidden = true;
-    if (isBatched()) sendBatch(config, candidates(), topics());
-    else start(candidates());
-  });
+  els.confirmCancel.addEventListener('click', closeConfirm);
+  els.confirmSend.addEventListener('click', confirmSend);
   els.stop.addEventListener('click', () => run && run.controller.abort());
   els.acceptAll.addEventListener('click', acceptFiltered);
   await initBatches({

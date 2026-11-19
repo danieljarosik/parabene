@@ -56,6 +56,10 @@ service worker, evaluators, config, i18n), `offscreen/` (hidden page hosting the
   For a batch sent to the Claude API (`stats/reviewer-batch.js`) the open statistics page may ask
   that API for the batch's state and answers, and "Fetch the list of models" asks the configured API
   for its models; those requests must carry no text of the log.
+  An API key goes only to the kind of API and the server (origin) it was saved for (`keyFor` in
+  `stats/reviewer-config.js`; a key typed in the form to the server it was typed for), the reviewer
+  requests never follow redirects (`redirect: 'error'`), and "Send" sends exactly what the
+  confirmation named — or nothing, when one of those entries is gone or reviewed meanwhile.
   The reviewer APIs are called with plain `fetch` (no SDK).
 - Do not widen the extension's CSP beyond `'wasm-unsafe-eval'`.
 - Do not commit packaged builds or keys (`*.zip`, `*.crx`, `*.pem`, `dist/`, `build/`).

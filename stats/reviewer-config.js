@@ -74,6 +74,25 @@ export function isComplete(config) {
   return config.provider !== 'claude' || Boolean(config.apiKey);
 }
 
+/** The scheme, host and port of an address ('' when it is not one): the server a key belongs to. */
+export function originOf(endpoint) {
+  try {
+    return new URL(endpoint).origin;
+  } catch (_) {
+    return '';
+  }
+}
+
+/**
+ * The saved key, when it was saved for this kind of API and this server; '' otherwise. A key is
+ * never sent to another server than the one it was saved for (e.g. an OpenAI key to the Claude
+ * API that a batch was sent to earlier, or a Claude key to an OpenAI-compatible server).
+ */
+export function keyFor(config, provider, endpoint) {
+  const origin = originOf(endpoint);
+  return config.apiKey && config.provider === provider && origin && origin === originOf(config.endpoint) ? config.apiKey : '';
+}
+
 /** The host a request goes to, for the confirmation ("api.openai.com"). */
 export function hostOf(endpoint) {
   try {

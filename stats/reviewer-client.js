@@ -17,6 +17,11 @@ const Evaluators = self.ParaBeneEvaluators;
 const RETRIES = 3;
 const MAX_WAIT_MS = 30000;
 const REASON_MAX = 300;
+/**
+ * No cookies, cache or referrer — and no redirects: one could carry the key (and on 307/308 the
+ * text) to another server than the one it was saved for.
+ */
+const REQUEST_OPTIONS = { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', redirect: 'error' };
 
 export function reviewError(code, detail) {
   const err = new Error(detail ? `${code}: ${detail}` : code);
@@ -47,7 +52,7 @@ export async function listModels(config) {
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
   let response;
   try {
-    response = await fetch(modelsUrl(config.endpoint), { headers, credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
+    response = await fetch(modelsUrl(config.endpoint), { headers, ...REQUEST_OPTIONS });
   } catch (err) {
     throw reviewError('unreachable', err && err.message);
   }
@@ -128,11 +133,15 @@ export function cleanAnswer(verdict, topic, reason, topics) {
 
 function wait(ms, signal) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
+    const onAbort = () => {
       clearTimeout(timer);
       reject(reviewError('aborted'));
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -152,9 +161,7 @@ async function request(config, messages, { strict, signal }) {
       headers,
       body: JSON.stringify(body),
       signal,
-      credentials: 'omit',
-      cache: 'no-store',
-      referrerPolicy: 'no-referrer',
+      ...REQUEST_OPTIONS,
     });
   } catch (err) {
     if (signal.aborted) throw reviewError('aborted');

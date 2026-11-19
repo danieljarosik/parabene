@@ -1434,8 +1434,12 @@
     "description": "Label of the field with the API key."
   },
   "reviewKeyHint": {
-    "message": "Klucz jest zapisany tylko w tej przeglądarce i nie trafia do kopii ustawień.",
+    "message": "Klucz jest zapisany tylko w tej przeglądarce, nie trafia do kopii ustawień i jest wysyłany tylko na serwer, dla którego go zapisano.",
     "description": "Note under the API key field."
+  },
+  "reviewKeyCleared": {
+    "message": "Inny serwer albo rodzaj API: zapisany klucz nie zostanie tam wysłany. Wpisz klucz do tego API.",
+    "description": "Shown when the key field was emptied because the form now points at another server or kind of API than the key was saved for."
   },
   "reviewSave": {
     "message": "Zapisz",
@@ -1498,6 +1502,10 @@
         "example": "gpt-5"
       }
     }
+  },
+  "reviewConfirmExpired": {
+    "message": "Nic nie wysłano: wpisy albo ustawienia, które nazywało potwierdzenie, zmieniły się (np. dziennik wyczyszczono, część wpisów wysłano z innej karty albo zapisano inne ustawienia). Kliknij „Wyślij do oceny…” ponownie.",
+    "description": "Shown when the open confirmation was closed because an entry it named was removed, reviewed or sent meanwhile, or the saved reviewer settings changed."
   },
   "reviewConfirmSend": {
     "message": "Wyślij",
@@ -1606,6 +1614,16 @@
   "reviewError_invalid": {
     "message": "odpowiedź modelu nie jest w oczekiwanym formacie",
     "description": "Review error: the answer could not be read."
+  },
+  "reviewError_batchKey": {
+    "message": "zapisz ustawienia Claude (paczka) z kluczem dla $host$",
+    "description": "Review error: a batch cannot be checked because the saved settings are not the Claude API on the server the batch was sent to (the saved key is not sent elsewhere).",
+    "placeholders": {
+      "host": {
+        "content": "$1",
+        "example": "api.anthropic.com"
+      }
+    }
   },
   "reviewError_unknown": {
     "message": "$detail$",

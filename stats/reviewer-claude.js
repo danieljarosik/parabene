@@ -149,6 +149,8 @@ async function call(config, method, url, body, signal) {
       credentials: 'omit',
       cache: 'no-store',
       referrerPolicy: 'no-referrer',
+      // A redirect could carry the key (and on 307/308 the texts) to another server than the one it was saved for.
+      redirect: 'error',
     });
   } catch (err) {
     throw reviewError('unreachable', err && err.message);

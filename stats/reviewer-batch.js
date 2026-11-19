@@ -17,6 +17,8 @@
 import { Store, ctx, t } from './context.js';
 import { dateTime, el, number } from './format.js';
 import { batchResults, cancelBatch, createBatch, retrieveBatch } from './reviewer-claude.js';
+import { reviewError } from './reviewer-client.js';
+import { hostOf, keyFor } from './reviewer-config.js';
 
 export const STORAGE_KEY = 'reviewerBatches';
 /** Where the one batch of an earlier version was kept. */
@@ -96,9 +98,15 @@ export function isSending() {
   return sending > 0;
 }
 
-/** Where a batch was sent, with the key as it is saved now (a key is never stored with a batch). */
+/**
+ * Where a batch was sent, with the key as it is saved now (a key is never stored with a batch) —
+ * only when the saved settings are the Claude API on that same server. Otherwise nothing is asked:
+ * the key saved for another API must not go there. Throws `batchKey` then.
+ */
 function access(batch) {
-  return { endpoint: batch.endpoint, model: batch.model, apiKey: hooks.config().apiKey };
+  const apiKey = keyFor(hooks.config(), 'claude', batch.endpoint);
+  if (!apiKey) throw reviewError('batchKey', hostOf(batch.endpoint));
+  return { endpoint: batch.endpoint, model: batch.model, apiKey };
 }
 
 function schedule() {
