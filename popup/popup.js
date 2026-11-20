@@ -97,6 +97,17 @@
     layoutReset: document.getElementById('layout-reset'),
     layoutStatus: document.getElementById('layout-status'),
     layoutError: document.getElementById('layout-error'),
+    customUrl: document.getElementById('custom-model-url'),
+    customCheck: document.getElementById('custom-model-check'),
+    customInfo: document.getElementById('custom-model-info'),
+    customConsentRow: document.getElementById('custom-model-consent-row'),
+    customConsent: document.getElementById('custom-model-consent'),
+    customStart: document.getElementById('custom-model-start'),
+    customStatus: document.getElementById('custom-model-status'),
+    customProgress: document.getElementById('custom-model-progress'),
+    customResult: document.getElementById('custom-model-result'),
+    customKeep: document.getElementById('custom-model-keep'),
+    customDiscard: document.getElementById('custom-model-discard'),
   };
 
   /**
@@ -237,6 +248,7 @@
     els.learnSimilarity.value = settings.learnSimilarity;
 
     renderLanguagePicker();
+    renderCustom();
     renderKeywords();
     renderSites();
     renderStatHint();
@@ -628,14 +640,26 @@
     return i18n.formatNumber(Math.round(bytes / 1e8) / 10);
   }
 
-  /** The list of built-in models with their sizes, the chosen one and the hint about it. */
+  /** The other basal version the user kept ("Advanced"), as a model entry, or null. */
+  function keptCustomModel() {
+    return customRecord && customRecord.state === 'kept' ? Config.customModel(customRecord.url, customRecord.bytes) : null;
+  }
+
+  /** The model `aiModel` stands for (as the service worker resolves it). */
+  function chosenModel() {
+    const kept = keptCustomModel();
+    return settings.aiModel === Config.CUSTOM_MODEL_ID && kept ? kept : Config.builtinModel(settings.aiModel);
+  }
+
+  /** The list of built-in models with their sizes (and a kept other version), the chosen one and the hint about it. */
   function renderModelPicker() {
-    const chosen = Config.builtinModel(settings.aiModel);
+    const chosen = chosenModel();
+    const kept = keptCustomModel();
     els.aiModelSelect.replaceChildren(
-      ...Config.BUILTIN_MODELS.map((model) => {
+      ...(kept ? [...Config.BUILTIN_MODELS, kept] : Config.BUILTIN_MODELS).map((model) => {
         const option = document.createElement('option');
         option.value = model.id;
-        option.textContent = t('aiModelOption', [model.name, gigabytes(model.bytes)]);
+        option.textContent = t(model.custom ? 'aiModelOptionCustom' : 'aiModelOption', [model.name, gigabytes(model.bytes)]);
         return option;
       })
     );
@@ -646,7 +670,8 @@
 
   async function saveModel() {
     const id = els.aiModelSelect.value;
-    if (!Config.isBuiltinModel(id) || id === settings.aiModel) return;
+    const allowed = Config.isBuiltinModel(id) || (id === Config.CUSTOM_MODEL_ID && keptCustomModel());
+    if (!allowed || id === settings.aiModel) return;
     await chrome.storage.local.set({ aiModel: id }); // the storage listener renders and asks for the new model's state
   }
 
@@ -669,7 +694,7 @@
     }
     // Changed while waiting: a newer request, another format or another model.
     if (seq !== modelSeq || settings.aiProtocol !== 'builtin') return;
-    if (model.model && model.model !== Config.builtinModel(settings.aiModel).id) return;
+    if (model.model && model.model !== chosenModel().id) return;
     lastModel = model;
     renderModel(model);
     if (model.status === 'downloading' || model.status === 'loading') modelTimer = setTimeout(refreshModel, 1000);
@@ -678,7 +703,8 @@
   function renderModel({ status, progress, error, stored }) {
     const percent = Math.floor((progress || 0) * 100);
     const downloading = status === 'downloading';
-    if (status === 'missing') showFeedback(els.aiModelStatus, t('aiModelMissing'), null);
+    if (status === 'trial') showFeedback(els.aiModelStatus, t('aiModelTrial'), null);
+    else if (status === 'missing') showFeedback(els.aiModelStatus, t('aiModelMissing'), null);
     else if (downloading) showFeedback(els.aiModelStatus, t('aiModelDownloading', String(percent)), null);
     else if (status === 'loading') showFeedback(els.aiModelStatus, t('aiModelLoading'), null);
     else if (status === 'error' && stored) showFeedback(els.aiModelStatus, t('aiModelStoredFailed', describeAiError(error)), 'error');
@@ -699,6 +725,216 @@
       /* refreshModel shows what happened */
     }
     await refreshModel();
+  }
+
+  /* ---------------- Advanced: another basal version ---------------- */
+
+  /** The slot as the service worker last gave it ({ url, name, bytes, state, … } or null), and the live trial state. */
+  let customRecord = null;
+  let customLive = null;
+  /** The last checked address: { url, name, bytes, level }; an error of the last action: { code, detail }. */
+  let customInfo = null;
+  let customError = null;
+  let customUrlTouched = false;
+  let customLoaded = false;
+  let customTimer = null;
+  let customSeq = 0;
+  /** The service worker's clock minus this page's (both are this computer's: normally 0). */
+  let clockOffset = 0;
+
+  /** Asks the service worker for the slot; while a trial runs, again every second (progress, time left). */
+  async function refreshCustom() {
+    clearTimeout(customTimer);
+    if (importKind) return;
+    const seq = ++customSeq;
+    let response = null;
+    try {
+      response = await chrome.runtime.sendMessage({ type: Config.MSG.CUSTOM_STATUS });
+    } catch (_) {
+      /* shown as no slot; asked again on the next change */
+    }
+    if (seq !== customSeq) return;
+    if (response && response.ok) {
+      customRecord = response.data.custom;
+      customLive = response.data.live;
+      clockOffset = response.data.now - Date.now();
+      customLoaded = true;
+    }
+    renderModelPicker();
+    renderCustom();
+    if (customRecord && customRecord.state === 'trial') customTimer = setTimeout(refreshCustom, 1000);
+  }
+
+  function seconds(ms) {
+    return i18n.formatNumber(Math.round(ms / 100) / 10);
+  }
+
+  /** m:ss */
+  function clock(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  }
+
+  /** An error of the service worker about the other version (messages "customError_<code>", else "aiError_<code>"). */
+  function describeCustomError(error) {
+    if (error && error.code === 'customTooLarge') {
+      return t('customError_customTooLarge', [gigabytes(Number(error.detail) || 0), gigabytes(Config.CUSTOM_MAX_BYTES)]);
+    }
+    const key = error ? `customError_${error.code}` : '';
+    if (key && i18n.has(key)) return t(key, error.detail == null ? [] : String(error.detail));
+    return describeAiError(error);
+  }
+
+  /** What the self-test found, as sentences. */
+  function describeTest(test) {
+    if (!test) return '';
+    if (test.error) return t('customTestError', describeCustomError(test.error));
+    const sentences = [];
+    if (Number.isFinite(test.slowest)) {
+      if (test.slowest > Config.CUSTOM_TEST_MAX_MS) {
+        sentences.push(t('customTestTooSlow', [seconds(test.slowest), seconds(Config.CUSTOM_TEST_MAX_MS)]));
+      } else {
+        sentences.push(t('customTestTime', seconds(test.slowest)));
+        if (test.slow) sentences.push(t('customTestSlow'));
+      }
+    }
+    if (Number.isFinite(test.expected) && Number.isFinite(test.total)) {
+      sentences.push(t(test.expected === test.total ? 'customTestVerdictsOk' : 'customTestVerdictsOff', [String(test.expected), String(test.total)]));
+    }
+    return sentences.join(' ');
+  }
+
+  function renderCustom() {
+    if (!customLoaded) return;
+    const record = customRecord;
+    const trial = Boolean(record && record.state === 'trial');
+    const builtin = settings.aiProtocol === 'builtin';
+    // The field starts with the slot's address or, as an example to change, the default model's.
+    if (!customUrlTouched && document.activeElement !== els.customUrl) {
+      els.customUrl.value = record ? record.url : Config.builtinModel(Config.DEFAULT_BUILTIN_MODEL).url;
+    }
+    els.customUrl.disabled = trial;
+    els.customCheck.disabled = trial;
+
+    // The checked address (only while the field still holds it), or the last error.
+    const info = customInfo && customInfo.url === els.customUrl.value.trim() ? customInfo : null;
+    if (customError) showFeedback(els.customInfo, describeCustomError(customError), 'error');
+    else if (!builtin && !trial) showFeedback(els.customInfo, t('customNeedsBuiltin'), null);
+    else if (info) {
+      const size = gigabytes(info.bytes);
+      if (info.level === 'tooLarge') {
+        showFeedback(els.customInfo, t('customInfoTooLarge', [info.name, size, gigabytes(Config.CUSTOM_MAX_BYTES)]), 'error');
+      } else if (info.level === 'large') {
+        showFeedback(els.customInfo, t('customInfoLarge', [info.name, size, gigabytes(Config.CUSTOM_WARN_BYTES)]), 'error');
+      } else {
+        showFeedback(els.customInfo, t('customInfoOk', [info.name, size]), 'ok');
+      }
+    } else {
+      showFeedback(els.customInfo, '', null);
+    }
+    const startable = Boolean(info) && info.level !== 'tooLarge' && builtin && !trial;
+    els.customConsentRow.hidden = !(startable && info.level === 'large');
+    if (els.customConsentRow.hidden) els.customConsent.checked = false;
+    els.customStart.hidden = !startable;
+    els.customStart.disabled = info && info.level === 'large' && !els.customConsent.checked;
+    if (info) els.customStart.textContent = t('customStart', gigabytes(info.bytes));
+
+    // The slot.
+    let status = '';
+    let kind = null;
+    let result = '';
+    let downloading = false;
+    let percent = 0;
+    els.customKeep.hidden = true;
+    els.customDiscard.hidden = !record;
+    if (record && trial && record.phase === 'tested') {
+      status = t('customTested', record.name);
+      kind = 'ok';
+      result = describeTest(record.test);
+      els.customKeep.hidden = false;
+      els.customKeep.textContent = t('customKeep', clock(record.deadline - (Date.now() + clockOffset)));
+      els.customDiscard.textContent = t('customReject');
+    } else if (record && trial) {
+      const live = customLive || { status: 'downloading', progress: 0 };
+      percent = Math.floor((live.progress || 0) * 100);
+      downloading = live.status === 'downloading';
+      if (downloading) status = t('customDownloading', [record.name, String(percent)]);
+      else if (live.status === 'loading') status = t('customLoading', record.name);
+      else status = t('customTesting', record.name);
+      result = t('customTrialHint');
+      els.customDiscard.textContent = t('customCancel');
+    } else if (record && record.state === 'kept') {
+      status = t('customKept', [record.name, gigabytes(record.bytes)]);
+      kind = 'ok';
+      result = [record.reverted ? t('customReverted') : '', describeTest(record.test)].filter(Boolean).join(' ');
+      els.customDiscard.textContent = t('customRemove');
+    } else if (record) {
+      const reasonKey = `customRejected_${record.reason}`;
+      status = i18n.has(reasonKey) ? t(reasonKey, record.name) : t('customRejected_testFailed', record.name);
+      kind = 'error';
+      result = record.error ? describeCustomError(record.error) : describeTest(record.test);
+      els.customDiscard.textContent = t('customDismiss');
+    }
+    showFeedback(els.customStatus, status, kind);
+    els.customResult.textContent = result;
+    els.customProgress.hidden = !downloading;
+    els.customProgress.value = percent;
+  }
+
+  async function sendCustom(type, extra) {
+    try {
+      const response = await chrome.runtime.sendMessage(Object.assign({ type }, extra));
+      return response || { ok: false, error: { code: 'noResponse' } };
+    } catch (err) {
+      return { ok: false, error: { code: 'unknown', detail: err.message } };
+    }
+  }
+
+  /** "Check": the address and the size of its file (asked from Hugging Face by the service worker). */
+  async function checkCustom() {
+    const url = els.customUrl.value.trim();
+    customInfo = null;
+    customError = null;
+    if (!Config.parseCustomModelUrl(url)) {
+      customError = { code: 'customInvalidUrl' };
+      renderCustom();
+      return;
+    }
+    els.customCheck.disabled = true;
+    showFeedback(els.customInfo, t('customChecking'), null);
+    const response = await sendCustom(Config.MSG.CUSTOM_CHECK, { url });
+    els.customCheck.disabled = false;
+    if (response.ok) customInfo = response.data;
+    else customError = response.error;
+    renderCustom();
+  }
+
+  /** "Download and test": the service worker checks again and starts the trial. */
+  async function startCustom() {
+    if (!customInfo) return;
+    els.customStart.disabled = true;
+    customError = null;
+    const response = await sendCustom(Config.MSG.CUSTOM_START, { url: customInfo.url, accepted: els.customConsent.checked });
+    if (response.ok) {
+      customInfo = null;
+      customUrlTouched = false;
+    } else {
+      customError = response.error;
+    }
+    await refreshCustom();
+  }
+
+  /** "Keep" and "Reject" / "Remove" / "Hide". */
+  async function customAction(type) {
+    els.customKeep.disabled = true;
+    els.customDiscard.disabled = true;
+    const response = await sendCustom(type);
+    els.customKeep.disabled = false;
+    els.customDiscard.disabled = false;
+    customError = response.ok ? null : response.error;
+    // The address stays in the field after the slot is emptied, to be corrected or tried again.
+    if (type === Config.MSG.CUSTOM_DISCARD) customUrlTouched = true;
+    await refreshCustom();
   }
 
   /* ---------------- Image evaluation ---------------- */
@@ -1328,6 +1564,23 @@
       if (button && !button.disabled) moveSection(button.dataset.id, Number(button.dataset.step));
     });
     els.layoutReset.addEventListener('click', resetLayout);
+    els.customUrl.addEventListener('input', () => {
+      customUrlTouched = true;
+      customInfo = null;
+      customError = null;
+      renderCustom();
+    });
+    els.customUrl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        checkCustom();
+      }
+    });
+    els.customCheck.addEventListener('click', checkCustom);
+    els.customConsent.addEventListener('change', renderCustom);
+    els.customStart.addEventListener('click', startCustom);
+    els.customKeep.addEventListener('click', () => customAction(Config.MSG.CUSTOM_KEEP));
+    els.customDiscard.addEventListener('click', () => customAction(Config.MSG.CUSTOM_DISCARD));
     els.language.addEventListener('change', () => {
       if (Config.isSupportedLanguage(els.language.value)) {
         chrome.storage.local.set({ language: els.language.value });
@@ -1337,6 +1590,9 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (Config.BUILTIN_STORAGE_KEY in changes) refreshModel();
+      // A trial began or ended, or the kept version changed: the chosen model's state too (after
+      // the slot is known, as refreshModel compares the model it gets with the chosen one).
+      if (Config.CUSTOM_MODEL_KEY in changes) refreshCustom().then(refreshModel);
       if (Config.LEARN_STORAGE_KEY in changes || Config.LEARN_PENDING_KEY in changes) {
         if (Config.LEARN_STORAGE_KEY in changes) {
           const value = changes[Config.LEARN_STORAGE_KEY].newValue;
@@ -1400,6 +1656,7 @@
       return;
     }
     await refreshStats();
+    await refreshCustom(); // first: the chosen model may be the kept other version
     refreshModel();
   }
 

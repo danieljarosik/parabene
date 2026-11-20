@@ -78,6 +78,79 @@
     return BUILTIN_MODELS.find((model) => model.id === id) || BUILTIN_MODELS.find((model) => model.id === DEFAULT_BUILTIN_MODEL);
   }
 
+  /**
+   * Another version of basal (the panel's "Advanced" section), at the user's own risk: one slot
+   * for a `-decision.gguf` file of a basal repository of Remek on Hugging Face, pinned to a commit
+   * (CUSTOM_MODEL_PATTERN). Only for the built-in format. Its model entry has the id
+   * CUSTOM_MODEL_ID (customModel()); `aiModel` may name it only after the user kept it.
+   *
+   * What is known about the slot is kept in chrome.storage.local under CUSTOM_MODEL_KEY:
+   *   { url, name, bytes, state, … } with state
+   *   - trial:    chosen in the panel and not kept yet. phase "download": the file is downloaded and
+   *               loaded, then the self-test runs (CUSTOM_TEST_*); phase "tested": it passed, and the
+   *               user has until `deadline` (CUSTOM_KEEP_MS) to click "Keep". Meanwhile pages use
+   *               keywords: the offscreen document holds the tried model only,
+   *   - kept:     the user kept it; it is listed with the built-in models. `loading` is set while
+   *               the document loads it and cleared once it is in memory,
+   *   - rejected: the trial ended without "Keep" (`reason`: testFailed, tooLarge, expired, restart);
+   *               the file is removed and the record stays only to tell the user why.
+   * On the first start of the service worker in a browser session (src/background.js) a trial still
+   * running is rejected ("restart") and a kept model whose load never finished (`loading`: the
+   * browser hung or crashed) is no longer chosen: the default model is used again.
+   * Before the download the size of the file is asked from the Hugging Face API (no text of any
+   * page is sent): up to CUSTOM_WARN_BYTES nothing is said, up to CUSTOM_MAX_BYTES the user has to
+   * confirm the risk, a larger file is refused (also during the download, should the API be wrong).
+   */
+  const CUSTOM_MODEL_ID = 'custom';
+  const CUSTOM_MODEL_KEY = 'customModel';
+  const CUSTOM_MODEL_STATES = Object.freeze(['trial', 'kept', 'rejected']);
+  const CUSTOM_MODEL_PATTERN =
+    /^https:\/\/huggingface\.co\/Remek\/(basal-[A-Za-z0-9._-]+)\/resolve\/([0-9a-f]{40})\/([A-Za-z0-9._-]+-decision\.gguf)$/;
+  const CUSTOM_WARN_BYTES = 1.5e9;
+  const CUSTOM_MAX_BYTES = 3.5e9;
+  /** Self-test: the slowest decision (texts of ~500 characters) above WARN is a warning, above MAX a failure. */
+  const CUSTOM_TEST_WARN_MS = 1500;
+  const CUSTOM_TEST_MAX_MS = 3000;
+  /**
+   * The whole self-test (all its decisions, after the model is loaded) may take this long; a test
+   * that has not ended by then (a decision that never answers) fails with a timeout.
+   */
+  const CUSTOM_TEST_TIMEOUT_MS = 60000;
+  /** How long the user may take to keep a model that passed the self-test. */
+  const CUSTOM_KEEP_MS = 120000;
+
+  /** { url, repo, revision, file } of a valid address of another basal version, or null. */
+  function parseCustomModelUrl(value) {
+    const url = typeof value === 'string' ? value.trim() : '';
+    const match = CUSTOM_MODEL_PATTERN.exec(url);
+    if (!match || match[1].includes('..') || match[3].startsWith('.')) return null;
+    return { url, repo: `Remek/${match[1]}`, revision: match[2], file: match[3] };
+  }
+
+  /** The Hugging Face API address that lists the files of the pinned commit, with their sizes. */
+  function customModelInfoUrl(parsed) {
+    return `https://huggingface.co/api/models/${parsed.repo}/tree/${parsed.revision}`;
+  }
+
+  /** The model entry (as in BUILTIN_MODELS) of another basal version, or null for an invalid address. */
+  function customModel(url, bytes) {
+    const parsed = parseCustomModelUrl(url);
+    if (!parsed) return null;
+    return Object.freeze({
+      id: CUSTOM_MODEL_ID,
+      name: parsed.file.replace(/-decision\.gguf$/, ''),
+      bytes: Number.isFinite(bytes) && bytes > 0 ? bytes : 0,
+      note: 'aiModelNote_custom',
+      url: parsed.url,
+      custom: true,
+    });
+  }
+
+  /** A value `aiModel` may hold: a built-in model or the kept other version. */
+  function isModelChoice(id) {
+    return isBuiltinModel(id) || id === CUSTOM_MODEL_ID;
+  }
+
   const BUILTIN_PAGE = 'offscreen/offscreen.html';
   const BUILTIN_TIMEOUT_MS = 30000;
   /** Tokens of context: 2,000 characters of Polish text are ~500 tokens with the question. */
@@ -299,12 +372,25 @@
     // panel → service worker (the built-in model's file)
     MODEL_STATUS: 'parabene:modelStatus',
     MODEL_DOWNLOAD: 'parabene:modelDownload',
+    // panel → service worker: another basal version ("Advanced"; CUSTOM_MODEL_KEY)
+    CUSTOM_CHECK: 'parabene:customCheck',
+    CUSTOM_START: 'parabene:customStart',
+    CUSTOM_STATUS: 'parabene:customStatus',
+    CUSTOM_KEEP: 'parabene:customKeep',
+    CUSTOM_DISCARD: 'parabene:customDiscard',
     // offscreen document → service worker: the file is stored / missing / could not be downloaded
     MODEL_STATE: 'parabene:modelState',
-    // service worker → offscreen document (the built-in model); each names the model by id
+    // offscreen document → service worker: the self-test of another basal version, and its deadline
+    MODEL_TEST: 'parabene:modelTest',
+    MODEL_TRIAL_CHECK: 'parabene:modelTrialCheck',
+    // service worker → content scripts: the chosen built-in model is in memory now (pages judged
+    // with keywords meanwhile are judged again)
+    MODEL_READY: 'parabene:modelReady',
+    // service worker → offscreen document (the built-in model); each names the model by id and address
     BUILTIN_LOAD: 'parabene:builtin:load',
     BUILTIN_STATUS: 'parabene:builtin:status',
     BUILTIN_EVALUATE: 'parabene:builtin:evaluate',
+    BUILTIN_REMOVE: 'parabene:builtin:remove',
   });
 
   /**
@@ -538,6 +624,7 @@
         return typeof value === 'string' && isValidEndpoint(value.trim()) ? value.trim() : undefined;
       case 'aiProtocol':
         return isSupportedProtocol(value) ? value : undefined;
+      // Not the other basal version: a backup does not carry its file, which has to pass the self-test.
       case 'aiModel':
         return isBuiltinModel(value) ? value : undefined;
       case 'aiMode':
@@ -571,7 +658,7 @@
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
       aiProtocol: isSupportedProtocol(s.aiProtocol) ? s.aiProtocol : DEFAULT_PROTOCOL,
-      aiModel: isBuiltinModel(s.aiModel) ? s.aiModel : DEFAULT_BUILTIN_MODEL,
+      aiModel: isModelChoice(s.aiModel) ? s.aiModel : DEFAULT_BUILTIN_MODEL,
       aiMode: isSupportedMode(s.aiMode) ? s.aiMode : DEFAULT_AI_MODE,
       aiSensitivity: isSupportedSensitivity(s.aiSensitivity) ? s.aiSensitivity : DEFAULT_AI_SENSITIVITY,
       aiTopics: Array.isArray(s.aiTopics) ? sanitizeTopics(s.aiTopics) : [...DEFAULT_AI_TOPICS],
@@ -625,6 +712,19 @@
     DEFAULT_BUILTIN_MODEL,
     isBuiltinModel,
     builtinModel,
+    CUSTOM_MODEL_ID,
+    CUSTOM_MODEL_KEY,
+    CUSTOM_MODEL_STATES,
+    CUSTOM_WARN_BYTES,
+    CUSTOM_MAX_BYTES,
+    CUSTOM_TEST_WARN_MS,
+    CUSTOM_TEST_MAX_MS,
+    CUSTOM_TEST_TIMEOUT_MS,
+    CUSTOM_KEEP_MS,
+    parseCustomModelUrl,
+    customModelInfoUrl,
+    customModel,
+    isModelChoice,
     BUILTIN_PAGE,
     BUILTIN_TIMEOUT_MS,
     BUILTIN_CONTEXT,

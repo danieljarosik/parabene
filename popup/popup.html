@@ -326,6 +326,28 @@
             <button type="button" class="link" id="layout-reset" data-i18n="layoutReset"></button>
           </div>
           <p class="hint layout__status" id="layout-status" role="status"></p>
+
+          <!-- Another basal version for the built-in model (src/config.js, "Another basal version"). -->
+          <h3 class="subhead subhead--section" id="custom-model-title" data-i18n="customModelTitle"></h3>
+          <p class="hint hint--lead hint--warning" data-i18n="customModelWarning"></p>
+          <label class="ai__label" for="custom-model-url" data-i18n="customModelUrlLabel"></label>
+          <div class="row">
+            <input type="url" id="custom-model-url" class="input input--mono" spellcheck="false" autocomplete="off" />
+            <button type="button" class="btn" id="custom-model-check" data-i18n="customModelCheck"></button>
+          </div>
+          <p class="hint" data-i18n="customModelUrlHint"></p>
+          <p class="hint" id="custom-model-info" role="status"></p>
+          <label class="topic custom__consent" id="custom-model-consent-row" hidden>
+            <input type="checkbox" id="custom-model-consent" /><span data-i18n="customModelConsent"></span>
+          </label>
+          <button type="button" class="btn btn--primary custom__start" id="custom-model-start" hidden></button>
+          <p class="hint model__status custom__status" id="custom-model-status" role="status"></p>
+          <progress class="model__progress" id="custom-model-progress" max="100" value="0" aria-labelledby="custom-model-status" hidden></progress>
+          <p class="hint" id="custom-model-result"></p>
+          <div class="backup__actions custom__actions">
+            <button type="button" class="btn btn--primary" id="custom-model-keep" hidden></button>
+            <button type="button" class="btn" id="custom-model-discard" hidden></button>
+          </div>
         </div>
       </section>
 

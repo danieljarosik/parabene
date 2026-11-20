@@ -319,6 +319,20 @@
       }
     }
   },
+  "aiModelOptionCustom": {
+    "message": "$name$ (inna wersja) — $size$ GB",
+    "description": "Option of the built-in model picker for the other basal version kept in “Advanced”: its file name (not translated) and size.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.2"
+      }
+    }
+  },
   "aiModelNote_pico": {
     "message": "Najmniejszy i najszybszy: ok. 0,2 s na krótki tekst.",
     "description": "Hint under the model picker for basal-omni-pico (time measured on an Apple M4 Pro)."
@@ -327,9 +341,17 @@
     "message": "Domyślny: ok. 0,3 s na krótki tekst.",
     "description": "Hint under the model picker for basal-2.0-mini (time measured on an Apple M4 Pro)."
   },
+  "aiModelNote_custom": {
+    "message": "Inna wersja basala z sekcji „Zaawansowane”, nieprzetestowana przez ParaBene – używasz jej na własne ryzyko.",
+    "description": "Hint under the model picker for the other basal version."
+  },
   "aiModelMissing": {
     "message": "Model nie jest pobrany. Dopóki go nie pobierzesz, wbudowany model jest wyłączony, a strony są filtrowane słowami kluczowymi.",
     "description": "Built-in model: the model file is not in the storage of the extension yet."
+  },
+  "aiModelTrial": {
+    "message": "Trwa test innej wersji basala (sekcja „Zaawansowane”). Do jego zakończenia strony są filtrowane słowami kluczowymi.",
+    "description": "Built-in model: another basal version is on trial, so the chosen model is not used meanwhile."
   },
   "aiModelDownload": {
     "message": "Pobierz model ($size$ GB)",
@@ -506,6 +528,10 @@
         "example": "Failed to fetch"
       }
     }
+  },
+  "aiError_customTrial": {
+    "message": "trwa test innej wersji basala – do jego zakończenia działają słowa kluczowe",
+    "description": "Error: the built-in model is not used while another basal version is on trial."
   },
   "aiError_http": {
     "message": "HTTP $status$",
@@ -2338,6 +2364,348 @@
   "layoutSaveFailed": {
     "message": "Nie udało się zapisać układu panelu – przywrócono ostatni zapisany.",
     "description": "Error when the panel layout could not be stored; the panel shows the stored one again."
+  },
+  "customModelTitle": {
+    "message": "Inna wersja basala",
+    "description": "Heading of the part of “Advanced” where another basal version can be tried."
+  },
+  "customModelWarning": {
+    "message": "Dla zaawansowanych. ParaBene jest sprawdzony z wersjami basala z listy „Model”. Inna wersja może działać wolniej, błędnie oceniać treści albo mocno obciążyć pamięć i kartę graficzną – zmieniasz ją na własne ryzyko. Nowa wersja przechodzi autotest i zaczyna działać dopiero po kliknięciu „Zachowaj”. Jeśli tego nie zrobisz albo przeglądarka zostanie zamknięta lub się zawiesi, ParaBene znów użyje modelu wybranego na liście „Model”.",
+    "description": "Warning above the field for another basal version."
+  },
+  "customModelUrlLabel": {
+    "message": "Adres pliku modelu na Hugging Face",
+    "description": "Label of the field for the address of another basal version."
+  },
+  "customModelUrlHint": {
+    "message": "Plik *-decision.gguf z repozytorium Remek/basal-…, przypięty do commita (40 znaków): https://huggingface.co/Remek/basal-…/resolve/<commit>/<plik>-decision.gguf. Na początek pole zawiera adres obecnego modelu domyślnego – zmień go na wybraną wersję.",
+    "description": "Format of the address of another basal version; the field is pre-filled with the default model's address as an example."
+  },
+  "customModelCheck": {
+    "message": "Sprawdź",
+    "description": "Button that checks the address and asks Hugging Face for the size of the file."
+  },
+  "customChecking": {
+    "message": "Sprawdzam plik na Hugging Face…",
+    "description": "Status while the size of the file is being asked for."
+  },
+  "customNeedsBuiltin": {
+    "message": "Inną wersję basala można wypróbować tylko z formatem zapytań „Wbudowany model” (sekcja „Silnik oceny”).",
+    "description": "Shown when another request format is chosen."
+  },
+  "customInfoOk": {
+    "message": "$name$: $size$ GB.",
+    "description": "The checked file: its name and size.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.2"
+      }
+    }
+  },
+  "customInfoLarge": {
+    "message": "$name$: $size$ GB – więcej niż $limit$ GB, do których sprawdzono modele. Taki model może zająć dużo pamięci karty graficznej i spowolnić przeglądarkę.",
+    "description": "The checked file is large: the user has to confirm the risk.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.0-4.5B-Q5_K_M"
+      },
+      "size": {
+        "content": "$2",
+        "example": "3.4"
+      },
+      "limit": {
+        "content": "$3",
+        "example": "1.5"
+      }
+    }
+  },
+  "customInfoTooLarge": {
+    "message": "$name$: $size$ GB – za duży (limit to $limit$ GB). Model tej wielkości mógłby zawiesić przeglądarkę, więc nie można go pobrać.",
+    "description": "The checked file is above the hard limit.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.0-9B-Q5_K_M"
+      },
+      "size": {
+        "content": "$2",
+        "example": "6.8"
+      },
+      "limit": {
+        "content": "$3",
+        "example": "3.5"
+      }
+    }
+  },
+  "customModelConsent": {
+    "message": "Rozumiem ryzyko i pobieram dużą, nieprzetestowaną wersję na własną odpowiedzialność.",
+    "description": "Checkbox that must be ticked before a large file can be downloaded."
+  },
+  "customStart": {
+    "message": "Pobierz i przetestuj ($size$ GB)",
+    "description": "Button that downloads the other version and runs its self-test.",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "1.2"
+      }
+    }
+  },
+  "customDownloading": {
+    "message": "$name$: pobieranie, $percent$%. Możesz zamknąć ten panel.",
+    "description": "Trial: the file is being downloaded.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "customLoading": {
+    "message": "$name$: wczytywanie do pamięci…",
+    "description": "Trial: the model is being loaded.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customTesting": {
+    "message": "$name$: autotest…",
+    "description": "Trial: the self-test is running.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customTrialHint": {
+    "message": "Do końca testu strony są filtrowane słowami kluczowymi. Jeśli przeglądarka zacznie działać źle, zamknij ją: po ponownym uruchomieniu ParaBene znów użyje modelu wybranego na liście „Model”.",
+    "description": "Trial: what happens meanwhile and how to get out of it."
+  },
+  "customCancel": {
+    "message": "Przerwij test",
+    "description": "Button that stops a trial."
+  },
+  "customTested": {
+    "message": "$name$ przeszedł autotest.",
+    "description": "Trial: the self-test passed; the user may keep the version.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customKeep": {
+    "message": "Zachowaj ($time$)",
+    "description": "Button that keeps the tested version; the placeholder is the time left (m:ss), after which the default model is used again.",
+    "placeholders": {
+      "time": {
+        "content": "$1",
+        "example": "1:42"
+      }
+    }
+  },
+  "customReject": {
+    "message": "Odrzuć",
+    "description": "Button that rejects the tested version."
+  },
+  "customKept": {
+    "message": "Używasz innej wersji basala: $name$ ($size$ GB). Znajdziesz ją na liście „Model” w sekcji „Silnik oceny”.",
+    "description": "The other version was kept.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.2"
+      }
+    }
+  },
+  "customRemove": {
+    "message": "Usuń tę wersję",
+    "description": "Button that removes the kept version and its file."
+  },
+  "customReverted": {
+    "message": "Ostatnio przeglądarka nie dokończyła wczytywania tej wersji (zawiesiła się albo została zamknięta), więc ParaBene wrócił do modelu domyślnego. Możesz wybrać ją ponownie na liście „Model”.",
+    "description": "The kept version was unchosen after a load that never finished."
+  },
+  "customDismiss": {
+    "message": "Ukryj",
+    "description": "Button that hides the message about a rejected version."
+  },
+  "customRejected_testFailed": {
+    "message": "$name$ nie przeszedł autotestu, a plik został usunięty. ParaBene znów używa modelu wybranego na liście „Model”.",
+    "description": "The trial ended: the self-test failed.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customRejected_tooLarge": {
+    "message": "$name$ okazał się za duży, więc pobieranie przerwano. ParaBene znów używa modelu wybranego na liście „Model”.",
+    "description": "The trial ended: the download was larger than the limit.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customRejected_expired": {
+    "message": "$name$ nie został zachowany na czas, a plik został usunięty. ParaBene znów używa modelu wybranego na liście „Model”.",
+    "description": "The trial ended: “Keep” was not clicked in time.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customRejected_restart": {
+    "message": "Test $name$ przerwało ponowne uruchomienie przeglądarki lub rozszerzenia, a plik został usunięty. ParaBene znów używa modelu wybranego na liście „Model”.",
+    "description": "The trial ended: the browser or the extension started again before the version was kept.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "basal-2.1-mini-Q5_K_M"
+      }
+    }
+  },
+  "customTestTime": {
+    "message": "Najwolniejsza decyzja: $seconds$ s.",
+    "description": "Self-test: the longest time of one decision (text of ~500 characters).",
+    "placeholders": {
+      "seconds": {
+        "content": "$1",
+        "example": "0.6"
+      }
+    }
+  },
+  "customTestSlow": {
+    "message": "To wolniej niż sprawdzone wersje: ukrywanie treści może się opóźniać.",
+    "description": "Self-test: the version is slow but within the limit."
+  },
+  "customTestTooSlow": {
+    "message": "Najwolniejsza decyzja: $seconds$ s – powyżej limitu $limit$ s.",
+    "description": "Self-test: too slow.",
+    "placeholders": {
+      "seconds": {
+        "content": "$1",
+        "example": "4.2"
+      },
+      "limit": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "customTestVerdictsOk": {
+    "message": "Przykładowe teksty oceniono zgodnie z oczekiwaniami ($expected$ z $total$).",
+    "description": "Self-test: all sample verdicts were the expected ones.",
+    "placeholders": {
+      "expected": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "customTestVerdictsOff": {
+    "message": "Uwaga: zgodnie z oczekiwaniami oceniono tylko $expected$ z $total$ przykładowych tekstów – ta wersja może ukrywać nie te treści, co trzeba.",
+    "description": "Self-test: some sample verdicts were not the expected ones (a warning, not a failure).",
+    "placeholders": {
+      "expected": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "customTestError": {
+    "message": "Błąd autotestu: $error$",
+    "description": "Self-test: the error that stopped it.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "this browser does not offer WebGPU"
+      }
+    }
+  },
+  "customError_customInvalidUrl": {
+    "message": "To nie jest adres pliku basala. Wymagany format: https://huggingface.co/Remek/basal-…/resolve/<40-znakowy commit>/<plik>-decision.gguf",
+    "description": "Error: the address does not match the required format."
+  },
+  "customError_customBuiltin": {
+    "message": "To adres jednego z wbudowanych modeli (z listy „Model”). Zmień go na adres innej wersji basala.",
+    "description": "Error: the address is that of a built-in model (the example the field starts with)."
+  },
+  "customError_customNotFound": {
+    "message": "Nie znaleziono tego pliku na Hugging Face. Sprawdź repozytorium, commit i nazwę pliku.",
+    "description": "Error: the repository, the commit or the file does not exist."
+  },
+  "customError_customInfoFailed": {
+    "message": "Nie udało się sprawdzić pliku na Hugging Face: $detail$",
+    "description": "Error: the Hugging Face API did not answer as expected.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "HTTP 500"
+      }
+    }
+  },
+  "customError_customTooLarge": {
+    "message": "Plik ma $size$ GB, czyli więcej niż limit $limit$ GB.",
+    "description": "Error: the file is above the hard limit.",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "6.8"
+      },
+      "limit": {
+        "content": "$2",
+        "example": "3.5"
+      }
+    }
+  },
+  "customError_customConsent": {
+    "message": "Zaznacz, że rozumiesz ryzyko pobrania dużego pliku.",
+    "description": "Error: a large file without the confirmation."
+  },
+  "customError_customNotBuiltin": {
+    "message": "Najpierw wybierz format zapytań „Wbudowany model”.",
+    "description": "Error: another request format is chosen."
+  },
+  "customError_customNotTested": {
+    "message": "Nie ma przetestowanej wersji do zachowania.",
+    "description": "Error: “Keep” without a version that passed the self-test."
+  },
+  "customError_customExpired": {
+    "message": "Czas na zachowanie tej wersji minął. ParaBene znów używa modelu wybranego na liście „Model”.",
+    "description": "Error: “Keep” clicked too late."
   },
   "settingsExport": {
     "message": "Eksportuj ustawienia",

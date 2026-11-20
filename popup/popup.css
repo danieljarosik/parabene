@@ -539,6 +539,43 @@ body {
   margin-left: auto;
 }
 
+/* Advanced: another basal version */
+
+.subhead--section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.hint--warning {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--error-soft);
+  color: var(--text);
+}
+
+.custom__consent {
+  margin-top: 8px;
+  align-items: flex-start;
+}
+
+.custom__consent input {
+  margin-top: 2px;
+}
+
+.custom__start {
+  margin-top: 8px;
+}
+
+.custom__status:empty,
+.custom__actions:not(:has(.btn:not([hidden]))) {
+  display: none;
+}
+
+.custom__actions {
+  margin-top: 8px;
+}
+
 /* Backup and import confirmation */
 
 .hint--lead {

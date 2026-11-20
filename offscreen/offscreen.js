@@ -6,17 +6,27 @@
  * basal decision model (one of Config.BUILTIN_MODELS, fixed by the first message that names it)
  * with wllama (llama.cpp in WebAssembly, on the GPU through WebGPU). For another model the
  * service worker closes the page and opens a new one. Messages from the service worker, each
- * with `model` (an id):
- *   BUILTIN_LOAD      { model, download } starts loading the stored model file; only with
+ * with `model` (an id) and, for another basal version (Config.CUSTOM_MODEL_ID), its `url`:
+ *   BUILTIN_LOAD      { model, download, test? } starts loading the stored model file; only with
  *                     `download: true` (the user clicked "Download model") a missing file is
- *                     downloaded first. Returns the current status.
+ *                     downloaded first. Returns the current status. With `test` (basal requests,
+ *                     for a version on trial) the page then makes these decisions once, measures
+ *                     them and reports the outcome (MODEL_TEST); after a test that worked it asks
+ *                     the service worker to look at the trial again when its time is up
+ *                     (MODEL_TRIAL_CHECK).
  *   BUILTIN_STATUS    { model, check } returns the status; with `check: true` also whether the
  *                     complete file of `model` is in the storage (`stored`), without loading or
  *                     downloading anything.
  *   BUILTIN_EVALUATE  { model, body: <basal request> } → { ok, data: <basal reply> } | { ok: false, error }.
  *                     Never downloads.
+ *   BUILTIN_REMOVE    { urls } removes the files of other basal versions from the storage (the
+ *                     service worker sends it to a page that holds no model).
  * It tells the service worker what it learns about a file (MODEL_STATE: "stored", "missing",
- * "failed"); a page of this kind cannot write chrome.storage itself.
+ * "failed", and "ready" once the model is in memory); a page of this kind cannot write
+ * chrome.storage itself. The download of another basal version is stopped as soon as its size
+ * (Content-Length) or the bytes that arrived exceed Config.CUSTOM_MAX_BYTES, and a stored file
+ * larger than that is never loaded; the self-test then fails with "customTooLarge" (MODEL_TEST).
+ * A self-test that has not ended after Config.CUSTOM_TEST_TIMEOUT_MS fails with "timeout".
  *
  * Status (of this page's model): idle → loading → ready, or idle → downloading (progress 0..1) →
  * loading → ready when the file may be downloaded; "missing" when there is no file and no
@@ -63,6 +73,7 @@ function describeError(err) {
 function snapshot() {
   return {
     model: current ? current.id : null,
+    url: current ? current.url : null,
     status: state.status,
     progress: state.progress,
     error: state.error,
@@ -70,8 +81,10 @@ function snapshot() {
   };
 }
 
-function knownModel(id) {
-  return Config.BUILTIN_MODELS.find((model) => model.id === id) || null;
+/** The model a message names: a built-in one by its id, another basal version by its address. */
+function knownModel(message) {
+  if (message.model === Config.CUSTOM_MODEL_ID) return Config.customModel(message.url);
+  return Config.BUILTIN_MODELS.find((model) => model.id === message.model) || null;
 }
 
 function library() {
@@ -96,7 +109,12 @@ async function storedFile(model) {
 
 /** Tells the service worker what is known about a model's file (it keeps the records). */
 function report(model, fileState, error) {
-  chrome.runtime.sendMessage({ type: Config.MSG.MODEL_STATE, model: model.id, state: fileState, error }).catch(() => {});
+  chrome.runtime.sendMessage({ type: Config.MSG.MODEL_STATE, model: model.id, url: model.url, state: fileState, error }).catch(() => {});
+}
+
+/** The outcome of the self-test of another basal version (or why it could not run). */
+function reportTest(model, outcome) {
+  chrome.runtime.sendMessage(Object.assign({ type: Config.MSG.MODEL_TEST, model: model.id, url: model.url }, outcome)).catch(() => {});
 }
 
 async function loadModel(download) {
@@ -106,15 +124,31 @@ async function loadModel(download) {
   let file = await storedFile(current);
   if (!file) {
     if (!download) throw codedError('modelMissing');
+    // The size the API gave was checked; this is the size the download really has. Without a
+    // Content-Length `total` is 0 until the end, so the bytes that arrived are counted as well.
+    let tooLarge = 0;
+    const abort = new AbortController();
     try {
       file = await library().modelManager.downloadModel(current.url, {
+        signal: abort.signal,
         progressCallback: ({ loaded, total }) => {
           state.progress = total > 0 ? loaded / total : 0;
+          const size = Math.max(loaded, total);
+          if (current.custom && !tooLarge && size > Config.CUSTOM_MAX_BYTES) {
+            tooLarge = size;
+            abort.abort();
+          }
         },
       });
     } catch (err) {
+      if (tooLarge) throw codedError('customTooLarge', String(tooLarge));
       throw codedError('downloadFailed', err && err.message ? err.message : String(err));
     }
+  }
+  // Also a file stored earlier (or one whose download ended before the check above saw its size)
+  // is not loaded into memory when it is larger than the limit.
+  if (current.custom && !(file.size > 0 && file.size <= Config.CUSTOM_MAX_BYTES)) {
+    throw codedError('customTooLarge', String(file.size));
   }
   fileStored = true;
   report(current, 'stored');
@@ -148,6 +182,7 @@ function ensureLoaded(download) {
       () => {
         ready = true;
         state.status = 'ready';
+        report(current, 'ready');
       },
       (err) => {
         const error = describeError(err);
@@ -200,13 +235,70 @@ async function evaluate(body) {
   return reply;
 }
 
+let testStarted = false;
+
+/**
+ * The self-test of another basal version: loads it (downloading the file the user asked for),
+ * then makes each decision of `bodies` one after another and measures it. The service worker
+ * judges the replies and the times.
+ */
+async function selfTest(model, bodies) {
+  let timer;
+  try {
+    await ensureLoaded(true);
+    const times = [];
+    const replies = [];
+    // A decision that never answers would leave the trial (and pages on keywords) running for good:
+    // after Config.CUSTOM_TEST_TIMEOUT_MS the test fails, and the service worker closes this page.
+    const timeoutMs = Config.CUSTOM_TEST_TIMEOUT_MS;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(codedError('timeout', String(timeoutMs))), timeoutMs);
+    });
+    for (const body of bodies) {
+      const started = performance.now();
+      replies.push(await Promise.race([wllama.createSystemOne(body), timeout]));
+      times.push(Math.round(performance.now() - started));
+    }
+    clearTimeout(timer);
+    reportTest(model, { ok: true, times, replies });
+    // The service worker may have been stopped meanwhile: wake it when the time to keep the model is up.
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ type: Config.MSG.MODEL_TRIAL_CHECK }).catch(() => {});
+    }, Config.CUSTOM_KEEP_MS + 1000);
+  } catch (err) {
+    clearTimeout(timer);
+    reportTest(model, { ok: false, error: describeError(err) });
+  }
+}
+
+/** Removes the files (complete or not) of other basal versions; the built-in models' files are never touched. */
+async function removeFiles(urls) {
+  const cache = library().modelManager.cacheManager;
+  for (const url of urls) {
+    if (Config.parseCustomModelUrl(url) && !Config.BUILTIN_MODELS.some((model) => model.url === url)) await cache.delete(url);
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Only the extension's own pages and service worker (content scripts have a tab).
   if (sender.id !== chrome.runtime.id || sender.tab || !message || typeof message.type !== 'string') return false;
+  if (message.type === Config.MSG.BUILTIN_REMOVE) {
+    // Only on a page that holds no model (the service worker opens one for this).
+    if (current || !Array.isArray(message.urls)) {
+      sendResponse({ ok: false, error: { code: 'modelFailed', detail: 'cannot remove files here' } });
+      return false;
+    }
+    removeFiles(message.urls).then(
+      () => sendResponse({ ok: true }),
+      (err) => sendResponse({ ok: false, error: describeError(err) })
+    );
+    return true;
+  }
+
   const types = [Config.MSG.BUILTIN_LOAD, Config.MSG.BUILTIN_STATUS, Config.MSG.BUILTIN_EVALUATE];
   if (!types.includes(message.type)) return false;
 
-  const model = knownModel(message.model);
+  const model = knownModel(message);
   if (!model) {
     sendResponse({ ok: false, error: { code: 'modelFailed', detail: 'unknown model' } });
     return false;
@@ -226,10 +318,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Loading and deciding: this page keeps the first model it is asked for.
   if (!current) current = model;
-  const other = current.id !== model.id;
+  const other = current.id !== model.id || current.url !== model.url;
 
   if (message.type === Config.MSG.BUILTIN_LOAD) {
-    if (!other) ensureLoaded(message.download === true).catch(() => {});
+    if (!other && current.custom && Array.isArray(message.test) && !testStarted) {
+      testStarted = true;
+      selfTest(current, message.test);
+    } else if (!other) {
+      ensureLoaded(message.download === true).catch(() => {});
+    }
     sendResponse({ ok: true, data: snapshot() }); // `model` in it tells the service worker which one is here
     return false;
   }

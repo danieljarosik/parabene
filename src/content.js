@@ -133,6 +133,8 @@
     revealed: new WeakMap(),
     inFlight: new WeakSet(),
     dirty: new WeakSet(),
+    /** Some content of this page was judged with keywords because the AI model did not answer. */
+    fallbackUsed: false,
     statsTimer: 0,
     alive: true,
     images: {
@@ -344,6 +346,8 @@
     state.dirty.delete(el);
 
     const stale = generation !== state.generation || !state.enabled;
+    // Judged with keywords because the AI model was not available: judged again once it is (MODEL_READY).
+    if (!stale && result && result.fallback === true) state.fallbackUsed = true;
     if (!stale && result && el.isConnected && !el.hasAttribute(ATTR_REVEALED)) {
       const match = result.hide ? learnedMatch({ text, stems }, result) : null;
       if (match) {
@@ -1250,6 +1254,7 @@
     }
     // Re-evaluate everything without revealing first — elements that no longer
     // match get unhidden and new matches get hidden (no flicker).
+    state.fallbackUsed = false;
     resetChecks();
     start();
   }
@@ -1346,7 +1351,18 @@
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (!message || message.type !== Config.MSG.GET_STATS) return false;
+    if (sender.id !== chrome.runtime.id || !message) return false;
+    if (message.type === Config.MSG.MODEL_READY) {
+      // The built-in model is in memory (e.g. after a trial of another basal version, which leaves
+      // `aiModel` unchanged): content judged with keywords meanwhile is judged again. A new
+      // evaluator also ends the fallback's pause.
+      const settings = state.settings;
+      if (state.alive && state.enabled && state.fallbackUsed && settings && settings.aiEnabled && settings.aiProtocol === 'builtin') {
+        applySettings(settings);
+      }
+      return false;
+    }
+    if (message.type !== Config.MSG.GET_STATS) return false;
     sendResponse(Object.assign(currentStats(), { enabled: state.enabled, adapter: adapter.name }));
     return false;
   });

@@ -90,9 +90,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === Config.MSG.MODEL_STATE && isBuiltinDocument(sender) && Config.isBuiltinModel(message.model)) {
-    builtinTask(() => recordBuiltinState(Config.builtinModel(message.model), message.state, message.error));
+  if (message.type === Config.MSG.MODEL_STATE && isBuiltinDocument(sender)) {
+    builtinTask(async () => {
+      const model = await reportedModel(message);
+      if (!model) return;
+      if (message.state === 'ready') {
+        await customLoaded(model);
+        await announceReady(model);
+      } else {
+        await recordBuiltinState(model, message.state, message.error);
+      }
+    }).catch(() => {});
     return false;
+  }
+
+  if (message.type === Config.MSG.MODEL_TEST && isBuiltinDocument(sender)) {
+    builtinTask(() => recordCustomTest(message)).catch(() => {});
+    return false;
+  }
+
+  if (message.type === Config.MSG.MODEL_TRIAL_CHECK && isBuiltinDocument(sender)) {
+    syncBuiltin();
+    return false;
+  }
+
+  const customActions = {
+    [Config.MSG.CUSTOM_CHECK]: () => customModelInfo(message.url),
+    [Config.MSG.CUSTOM_START]: () => startCustomTrial(message.url, message.accepted === true),
+    [Config.MSG.CUSTOM_STATUS]: customStatus,
+    [Config.MSG.CUSTOM_KEEP]: keepCustom,
+    [Config.MSG.CUSTOM_DISCARD]: discardCustom,
+  };
+  if (Object.prototype.hasOwnProperty.call(customActions, message.type) && isExtensionPage(sender)) {
+    customActions[message.type]().then(
+      (data) => sendResponse({ ok: true, data }),
+      (err) => sendResponse({ ok: false, error: describeError(err) })
+    );
+    return true;
   }
 
   if (message.type === Config.MSG.TEST_IMAGES) {
@@ -182,8 +216,11 @@ async function classify(text, test, pageUrl) {
     }
     const input = String(text || '').slice(0, Config.AI_MAX_CHARS);
     if (aiProtocol === 'builtin') {
+      // While another basal version is tried, the document holds it alone: keywords meanwhile.
+      const custom = await readCustom();
+      if (custom && custom.state === 'trial') throw Evaluators.codedError('customTrial', 'another basal version is being tried');
       // Without the chosen model's file nothing is asked and nothing is downloaded: the user downloads it in the panel.
-      const model = Config.builtinModel(aiModel);
+      const model = await chosenModel(aiModel, custom);
       const record = await builtinRecord(model);
       if (record.state === 'requested') {
         const { progress } = await builtinStatus();
@@ -231,8 +268,11 @@ async function classify(text, test, pageUrl) {
  * The model lives in an offscreen document (offscreen/offscreen.js), not here: a service worker
  * is stopped after 30 s without events and would have to load the model again.
  *
- * The user picks one of Config.BUILTIN_MODELS (`aiModel`); the document holds one model at a time
- * and is closed and opened again for another one.
+ * The user picks one of Config.BUILTIN_MODELS (`aiModel`), or the other basal version kept in the
+ * panel's "Advanced" section (Config.CUSTOM_MODEL_KEY, see "Another basal version" below); the
+ * document holds one model at a time (told apart by id and address) and is closed and opened again
+ * for another one. While another version is on trial the document holds that one, whatever the
+ * settings say.
  *
  * Nothing is downloaded until the user clicks "Download model" in the panel. What is known about
  * each model's file is kept in chrome.storage.local (Config.BUILTIN_STORAGE_KEY): "requested"
@@ -304,11 +344,15 @@ async function sendBuiltin(message) {
   }
 }
 
-/** Runs the tasks that open, close or question the document one after another. */
+/**
+ * Runs the tasks that open, close or question the document one after another. Resolves with the
+ * task's result or rejects with its error (the panel shows it); a failed task is logged and does
+ * not stop the next one. A caller that does not wait for the outcome adds `.catch(() => {})`.
+ */
 function builtinTask(task) {
-  const run = () => task().catch((err) => console.warn('[ParaBene] Built-in model:', err));
-  builtinSync = builtinSync.then(run, run);
-  return builtinSync;
+  const result = builtinSync.then(() => task());
+  builtinSync = result.catch((err) => console.warn('[ParaBene] Built-in model:', err));
+  return result;
 }
 
 /** A message from one of the extension's own pages (the panel), not from a content script. */
@@ -360,39 +404,70 @@ async function recordBuiltinState(model, state, error) {
   else if (state === 'failed' && current === 'requested') await writeBuiltinRecord(model, 'failed', error);
 }
 
-/** Opens the document and starts the download or the load, or closes the document (see above). */
+/** Whether the document's status (`data`) is about this model: the same id and the same file. */
+function holds(data, model) {
+  return Boolean(data) && data.model === model.id && data.url === model.url;
+}
+
+/**
+ * Opens the document and starts the download or the load, or closes the document (see above).
+ * First the other basal version is looked after: the checks after a browser start, a trial whose
+ * time is up, files waiting to be removed (see "Another basal version").
+ */
 function syncBuiltin() {
+  // Never rejects: an error is logged, and the next sync (a change of the settings or the records,
+  // the next start) tries again.
   return builtinTask(async () => {
+    await checkCustomAfterStart();
+    await expireCustomTrial();
+    await processRemovals();
     const { enabled, aiEnabled, aiProtocol, aiModel } = await Config.load();
-    const model = Config.builtinModel(aiModel);
-    // A download belongs to the chosen model of the built-in format: choosing another model or
-    // format cancels it, so it does not start again by itself when the user comes back.
-    for (const other of Config.BUILTIN_MODELS) {
-      if (aiProtocol === 'builtin' && other.id === model.id) continue;
+    const custom = await readCustom();
+    const trial = custom && custom.state === 'trial' ? customEntry(custom) : null;
+    const model = trial || (await chosenModel(aiModel, custom));
+    const active = trial || (aiProtocol === 'builtin' ? model : null);
+    // A download belongs to the chosen model of the built-in format (or to the version on trial):
+    // choosing another model or format cancels it, so it does not start again by itself when the
+    // user comes back.
+    const all = custom && custom.state !== 'rejected' ? [...Config.BUILTIN_MODELS, customEntry(custom)] : Config.BUILTIN_MODELS;
+    for (const other of all) {
+      if (active && other.id === active.id && other.url === active.url) continue;
       if ((await builtinRecord(other)).state === 'requested') await writeBuiltinRecord(other, 'missing');
     }
     const { state } = await builtinRecord(model);
-    const wanted = aiProtocol === 'builtin' && (state === 'requested' || (state === 'stored' && enabled && aiEnabled));
+    const wanted = Boolean(trial) || (aiProtocol === 'builtin' && (state === 'requested' || (state === 'stored' && enabled && aiEnabled)));
+    // A kept version that is not loaded now (the AI model was switched off, another model was
+    // chosen) loses its mark: its load was ended on purpose, the browser did not hang.
+    if (custom && custom.state === 'kept' && custom.loading && !(wanted && model.custom)) {
+      await writeCustom(Object.assign({}, custom, { loading: false }));
+    }
     if (!wanted) {
       if (await hasBuiltinDocument()) await chrome.offscreen.closeDocument();
       return;
     }
-    const load = { type: Config.MSG.BUILTIN_LOAD, model: model.id, download: state === 'requested' };
+    const testing = Boolean(trial) && custom.phase === 'download';
+    const load = { type: Config.MSG.BUILTIN_LOAD, model: model.id, url: model.url, download: testing || state === 'requested' };
+    if (testing) load.test = customTestBodies();
     await openBuiltin();
-    const reply = await sendBuiltin(load);
-    if (reply && reply.ok && reply.data.model !== model.id) {
+    let reply = await sendBuiltin(load);
+    if (reply && reply.ok && !holds(reply.data, model)) {
       // The document holds another model: a new document for this one.
       await chrome.offscreen.closeDocument();
       await openBuiltin();
-      await sendBuiltin(load);
+      reply = await sendBuiltin(load);
     }
-  });
+    // A kept version is marked while it loads: a load that never ends (the browser hung) is undone
+    // after the next browser start (checkCustomAfterStart).
+    if (!trial && model.custom && reply && reply.ok && reply.data.status !== 'ready' && !custom.loading) {
+      await writeCustom(Object.assign({}, custom, { loading: true }));
+    }
+  }).catch(() => {});
 }
 
 chrome.runtime.onStartup.addListener(syncBuiltin);
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  const keys = ['enabled', 'aiEnabled', 'aiProtocol', 'aiModel', Config.BUILTIN_STORAGE_KEY];
+  const keys = ['enabled', 'aiEnabled', 'aiProtocol', 'aiModel', Config.BUILTIN_STORAGE_KEY, Config.CUSTOM_MODEL_KEY];
   if (keys.some((key) => key in changes)) syncBuiltin();
 });
 syncBuiltin(); // every start of the service worker, including install and reload
@@ -439,8 +514,10 @@ async function migrateLegacyRecord() {
 async function requestBuiltinDownload() {
   await builtinTask(async () => {
     const { aiProtocol, aiModel } = await Config.load();
-    const model = Config.builtinModel(aiModel);
-    if (aiProtocol === 'builtin' && (await builtinRecord(model)).state !== 'stored') await writeBuiltinRecord(model, 'requested');
+    const custom = await readCustom();
+    if (aiProtocol !== 'builtin' || (custom && custom.state === 'trial')) return;
+    const model = await chosenModel(aiModel, custom);
+    if ((await builtinRecord(model)).state !== 'stored') await writeBuiltinRecord(model, 'requested');
   });
   await syncBuiltin();
 }
@@ -448,7 +525,8 @@ async function requestBuiltinDownload() {
 /**
  * For the panel (and checkBuiltinFile), about the chosen model: { model, status, progress?, error?,
  * stored? } with status "missing" | "downloading" | "loading" | "ready" | "stored" (on disk, not in
- * memory) | "error" (`stored`: the file is there, so the error is not about the download).
+ * memory) | "error" (`stored`: the file is there, so the error is not about the download) | "trial"
+ * (another basal version is being tried: the chosen model is not used meanwhile).
  * The records are checked against the document: an open document is asked for its state; with no
  * document and no download running, one is opened for a moment to ask whether the file is in the
  * storage — a file without a record (downloaded by an earlier version, or a record lost with the
@@ -457,27 +535,32 @@ async function requestBuiltinDownload() {
 async function builtinStatus() {
   let live = null;
   let model = null;
+  let trial = false;
   await builtinTask(async () => {
     const { aiProtocol, aiModel } = await Config.load();
-    model = Config.builtinModel(aiModel);
+    const custom = await readCustom();
+    model = await chosenModel(aiModel, custom);
+    trial = Boolean(custom && custom.state === 'trial');
+    if (trial) return;
     if (await hasBuiltinDocument()) {
-      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: model.id });
-      if (!reply || !reply.ok || reply.data.model !== model.id) return;
+      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: model.id, url: model.url });
+      if (!reply || !reply.ok || !holds(reply.data, model)) return;
       live = reply.data;
       // The document's reports (MODEL_STATE) are not acknowledged: take the same facts from its status.
       if (live.stored) await recordBuiltinState(model, 'stored');
       else if (live.status === 'error') await recordBuiltinState(model, 'failed', live.error);
     } else if (aiProtocol === 'builtin' && ['missing', 'stored'].includes((await builtinRecord(model)).state)) {
       await openBuiltin();
-      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: model.id, check: true });
+      const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: model.id, url: model.url, check: true });
       if (reply && reply.ok) await recordBuiltinState(model, reply.data.stored ? 'stored' : 'missing');
     }
   });
+  const about = { model: model.id };
+  if (trial) return Object.assign(about, { status: 'trial' });
   // No document answered: close one opened only to look, or open one that is wanted.
   if (!live) await syncBuiltin();
   const record = await builtinRecord(model);
   const stored = record.state === 'stored';
-  const about = { model: model.id };
   if (live && ['downloading', 'loading', 'ready'].includes(live.status)) {
     return Object.assign(about, { status: live.status, progress: live.progress });
   }
@@ -506,7 +589,7 @@ async function builtinTransport(model, body) {
   });
   try {
     const response = await Promise.race([
-      sendBuiltin({ type: Config.MSG.BUILTIN_EVALUATE, model: model.id, body }),
+      sendBuiltin({ type: Config.MSG.BUILTIN_EVALUATE, model: model.id, url: model.url, body }),
       timeout,
     ]);
     if (!response || !response.ok) {
@@ -517,6 +600,371 @@ async function builtinTransport(model, body) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Another basal version (the panel's "Advanced" section)              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The slot and its states are described in src/config.js ("Another basal version"). The panel
+ * checks an address (customModelInfo: the file's size from the Hugging Face API, never any page
+ * text), starts a trial (startCustomTrial), keeps the version (keepCustom) or drops it
+ * (discardCustom). The trial runs in the offscreen document: download, load, self-test
+ * (recordCustomTest). Files of versions that are no longer used are removed from the storage by a
+ * document that holds no model (processRemovals).
+ */
+
+/** Files of other versions waiting to be removed: an array of addresses in chrome.storage.local. */
+const CUSTOM_REMOVALS_KEY = 'customModelRemovals';
+/** In chrome.storage.session (emptied when the browser or the extension starts again). */
+const SESSION_STARTED_KEY = 'builtinSessionStarted';
+const CUSTOM_INFO_TIMEOUT_MS = 15000;
+
+/**
+ * The self-test: one short text (it warms the GPU up and is not timed against the limits), then a
+ * neutral and an accident report of ~500 characters each. The verdicts (default topics and
+ * sensitivity) are compared with the expected ones; a model that gets them wrong is not refused,
+ * the panel only says so.
+ */
+const CUSTOM_TEST_TEXTS = Object.freeze([
+  { hide: false, text: 'Dzisiaj w parku miejskim zakwitły pierwsze magnolie.' },
+  {
+    hide: false,
+    text:
+      'Biblioteka miejska zaprasza w sobotę na dzień otwarty. Od godziny 10 czytelnicy mogą zwiedzać ' +
+      'magazyny, w których przechowywane są stare mapy i pierwsze wydania książek. Dla dzieci ' +
+      'przygotowano warsztaty ilustracji i głośne czytanie baśni, a dla dorosłych spotkanie z autorką ' +
+      'powieści o historii miasta. Wstęp jest bezpłatny, ale na warsztaty obowiązują zapisy przez stronę ' +
+      'internetową biblioteki. Organizatorzy przypominają, że w budynku działa kawiarnia, a w ogrodzie ' +
+      'ustawiono stoliki z grami planszowymi.',
+  },
+  {
+    hide: true,
+    text:
+      'Na drodze krajowej pod Grójcem doszło w nocy do tragicznego wypadku. Samochód osobowy zjechał ' +
+      'na przeciwległy pas i zderzył się czołowo z ciężarówką. Kierowca osobówki zginął na miejscu, a ' +
+      'dwoje pasażerów z ciężkimi obrażeniami przetransportowano śmigłowcem do szpitala. Strażacy przez ' +
+      'ponad godzinę wycinali poszkodowanych z wraku. Droga była zablokowana do rana, a policja ustala ' +
+      'przyczyny zdarzenia i apeluje do świadków o kontakt. To już trzeci śmiertelny wypadek na tym ' +
+      'odcinku w tym roku.',
+  },
+]);
+
+function customTestBodies() {
+  return CUSTOM_TEST_TEXTS.map(({ text }) => Evaluators.basalRequest(text, Config.DEFAULT_AI_TOPICS));
+}
+
+/** The record of the slot (Config.CUSTOM_MODEL_KEY), or null when there is none or it is not valid. */
+async function readCustom() {
+  const key = Config.CUSTOM_MODEL_KEY;
+  const value = (await chrome.storage.local.get(key))[key];
+  const valid =
+    value && typeof value === 'object' && Config.CUSTOM_MODEL_STATES.includes(value.state) && Config.parseCustomModelUrl(value.url);
+  return valid ? value : null;
+}
+
+/** Writes the record of the slot; null removes it. */
+async function writeCustom(value) {
+  if (value) await chrome.storage.local.set({ [Config.CUSTOM_MODEL_KEY]: value });
+  else await chrome.storage.local.remove(Config.CUSTOM_MODEL_KEY);
+}
+
+/** The model entry of the slot's record. */
+function customEntry(custom) {
+  return Config.customModel(custom.url, custom.bytes);
+}
+
+/** The model `aiModel` stands for: the kept other version, or a built-in model (the default one for anything else). */
+async function chosenModel(aiModel, custom) {
+  if (aiModel === Config.CUSTOM_MODEL_ID) {
+    const record = custom === undefined ? await readCustom() : custom;
+    if (record && record.state === 'kept') return customEntry(record);
+  }
+  return Config.builtinModel(aiModel);
+}
+
+/** The model a report of the document is about, or null when it is not one the settings know (any more). */
+async function reportedModel(message) {
+  if (message.model === Config.CUSTOM_MODEL_ID) {
+    const custom = await readCustom();
+    return custom && custom.state !== 'rejected' && custom.url === message.url ? customEntry(custom) : null;
+  }
+  const model = Config.isBuiltinModel(message.model) ? Config.builtinModel(message.model) : null;
+  return model && model.url === message.url ? model : null;
+}
+
+/**
+ * The other version is no longer chosen: when `aiModel` named it, the default model is chosen;
+ * any other choice (e.g. pico, chosen before a trial) stays.
+ */
+async function unchooseCustom() {
+  const { aiModel } = await chrome.storage.local.get('aiModel');
+  if (aiModel === Config.CUSTOM_MODEL_ID) await chrome.storage.local.set({ aiModel: Config.DEFAULT_BUILTIN_MODEL });
+}
+
+async function queueRemoval(url) {
+  const urls = (await chrome.storage.local.get(CUSTOM_REMOVALS_KEY))[CUSTOM_REMOVALS_KEY];
+  const list = Array.isArray(urls) ? urls.filter((item) => typeof item === 'string') : [];
+  if (!list.includes(url)) await chrome.storage.local.set({ [CUSTOM_REMOVALS_KEY]: [...list, url] });
+}
+
+/**
+ * Ends a trial (or a version) without keeping it: `reason` and `extra` (test, error) stay in the
+ * record for the panel; the file goes, and pages use the model chosen in the list again
+ * (unchooseCustom). Call only from a builtinTask.
+ */
+async function rejectCustom(custom, reason, extra) {
+  await writeCustom(Object.assign({ url: custom.url, name: custom.name, bytes: custom.bytes, state: 'rejected', reason }, extra));
+  await writeBuiltinRecord(customEntry(custom), 'missing');
+  await queueRemoval(custom.url);
+  await unchooseCustom();
+}
+
+/**
+ * Once per browser session (and after an install or a reload of the extension): a trial still
+ * running was never kept, so it is rejected; a kept version whose load never ended (the browser
+ * hung or was closed while it loaded) is no longer chosen. Call only from a builtinTask.
+ */
+async function checkCustomAfterStart() {
+  if (!chrome.storage.session) return;
+  if ((await chrome.storage.session.get(SESSION_STARTED_KEY))[SESSION_STARTED_KEY]) return;
+  await chrome.storage.session.set({ [SESSION_STARTED_KEY]: true });
+  const custom = await readCustom();
+  if (!custom) return;
+  if (custom.state === 'trial') {
+    await rejectCustom(custom, 'restart', custom.test ? { test: custom.test } : undefined);
+  } else if (custom.state === 'kept' && custom.loading) {
+    await writeCustom(Object.assign({}, custom, { loading: false, reverted: true }));
+    await unchooseCustom();
+  }
+}
+
+/** A trial that passed the self-test and was not kept in time is rejected. Call only from a builtinTask. */
+async function expireCustomTrial() {
+  const custom = await readCustom();
+  if (custom && custom.state === 'trial' && custom.phase === 'tested' && !(Date.now() < custom.deadline)) {
+    await rejectCustom(custom, 'expired', { test: custom.test });
+  }
+}
+
+/** The document has the model in memory: a kept version is no longer marked as loading. Call only from a builtinTask. */
+async function customLoaded(model) {
+  if (!model.custom) return;
+  const custom = await readCustom();
+  if (custom && custom.state === 'kept' && custom.url === model.url && (custom.loading || custom.reverted)) {
+    await writeCustom(Object.assign({}, custom, { loading: false, reverted: false }));
+  }
+}
+
+/**
+ * The document has `model` in memory: when it is the model pages use now (the built-in format, no
+ * trial), the tabs are told, so content judged with keywords meanwhile — during a trial, while the
+ * model was downloaded or loaded — is judged again by the model. Call only from a builtinTask.
+ */
+async function announceReady(model) {
+  const { aiProtocol, aiModel } = await Config.load();
+  const custom = await readCustom();
+  if (aiProtocol !== 'builtin' || (custom && custom.state === 'trial')) return;
+  const chosen = await chosenModel(aiModel, custom);
+  if (chosen.id !== model.id || chosen.url !== model.url) return;
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.id >= 0) chrome.tabs.sendMessage(tab.id, { type: Config.MSG.MODEL_READY }).catch(() => {});
+  }
+}
+
+/**
+ * Removes the files waiting for it, in a document opened for this alone (the one open may hold
+ * one of them in memory). The file of the version in the slot and the built-in models' files are
+ * kept. Call only from a builtinTask.
+ */
+async function processRemovals() {
+  const urls = (await chrome.storage.local.get(CUSTOM_REMOVALS_KEY))[CUSTOM_REMOVALS_KEY];
+  if (!Array.isArray(urls) || urls.length === 0) return;
+  const custom = await readCustom();
+  const inUse = custom && custom.state !== 'rejected' ? custom.url : null;
+  const list = urls.filter(
+    (url) => typeof url === 'string' && url !== inUse && Config.parseCustomModelUrl(url) && !Config.BUILTIN_MODELS.some((m) => m.url === url)
+  );
+  if (list.length > 0) {
+    if (await hasBuiltinDocument()) await chrome.offscreen.closeDocument();
+    await openBuiltin();
+    const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_REMOVE, urls: list });
+    if (!reply || !reply.ok) {
+      console.warn('[ParaBene] Could not remove model files:', reply && reply.error);
+      return; // tried again on the next sync
+    }
+  }
+  await chrome.storage.local.remove(CUSTOM_REMOVALS_KEY);
+}
+
+/**
+ * The panel's "Check": the address must name a basal decision file pinned to a commit; its size
+ * comes from the Hugging Face API (the list of the commit's files). Resolves with
+ * { url, name, bytes, level: "ok" | "large" | "tooLarge" }.
+ */
+async function customModelInfo(value) {
+  const parsed = Config.parseCustomModelUrl(value);
+  if (!parsed) throw Evaluators.codedError('customInvalidUrl', 'not an address of a basal decision file');
+  // The field starts with the default model's address, as an example: that file is a built-in model already.
+  if (Config.BUILTIN_MODELS.some((model) => model.url === parsed.url)) throw Evaluators.codedError('customBuiltin', 'a built-in model');
+  let entries;
+  try {
+    const response = await fetch(Config.customModelInfoUrl(parsed), {
+      credentials: 'omit',
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(CUSTOM_INFO_TIMEOUT_MS),
+    });
+    // Hugging Face answers 401 for a repository that does not exist (or is private).
+    if ([401, 403, 404].includes(response.status)) throw Evaluators.codedError('customNotFound', `HTTP ${response.status}`);
+    if (!response.ok) throw Evaluators.codedError('customInfoFailed', `HTTP ${response.status}`, `HTTP ${response.status}`);
+    entries = await response.json();
+  } catch (err) {
+    if (err && err.code) throw err;
+    throw Evaluators.codedError('customInfoFailed', String(err && err.message ? err.message : err), String(err && err.message ? err.message : err));
+  }
+  const entry = Array.isArray(entries) ? entries.find((item) => item && item.type === 'file' && item.path === parsed.file) : null;
+  if (!entry) throw Evaluators.codedError('customNotFound', 'no such file in this commit');
+  const bytes = entry.lfs && Number.isFinite(entry.lfs.size) ? entry.lfs.size : entry.size;
+  if (!(Number.isFinite(bytes) && bytes > 0)) throw Evaluators.codedError('customInfoFailed', 'no file size', 'no file size');
+  const level = bytes > Config.CUSTOM_MAX_BYTES ? 'tooLarge' : bytes > Config.CUSTOM_WARN_BYTES ? 'large' : 'ok';
+  return { url: parsed.url, name: Config.customModel(parsed.url).name, bytes, level };
+}
+
+/**
+ * The panel's "Download and test": checks the address and the size again (the panel may be out of
+ * date), then puts the version on trial; the document then downloads, loads and tests it. A trial
+ * already running is left alone. `accepted`: the user confirmed the risk of a large file.
+ */
+async function startCustomTrial(url, accepted) {
+  const { aiProtocol } = await Config.load();
+  if (aiProtocol !== 'builtin') throw Evaluators.codedError('customNotBuiltin', 'only for the built-in model');
+  const info = await customModelInfo(url);
+  if (info.level === 'tooLarge') throw Evaluators.codedError('customTooLarge', 'file too large', String(info.bytes));
+  if (info.level === 'large' && !accepted) throw Evaluators.codedError('customConsent', 'the risk was not confirmed');
+  await builtinTask(async () => {
+    const previous = await readCustom();
+    if (previous && previous.state === 'trial') return;
+    if (previous && previous.url !== info.url) await queueRemoval(previous.url);
+    const entry = Config.customModel(info.url, info.bytes);
+    await writeCustom({ url: info.url, name: entry.name, bytes: info.bytes, state: 'trial', phase: 'download', startedAt: Date.now() });
+    if ((await builtinRecord(entry)).state !== 'stored') await writeBuiltinRecord(entry, 'requested');
+    await unchooseCustom();
+    // A fresh document: the memory of the model it held is freed, and the self-test runs in it once.
+    if (await hasBuiltinDocument()) await chrome.offscreen.closeDocument();
+  });
+  await syncBuiltin();
+  return customStatus();
+}
+
+/** The outcome of the self-test the document reports. Call only from a builtinTask. */
+async function recordCustomTest(message) {
+  const custom = await readCustom();
+  if (!custom || custom.state !== 'trial' || custom.phase !== 'download' || custom.url !== message.url) return;
+  if (message.ok !== true) {
+    const raw = message.error && typeof message.error.code === 'string' ? message.error : { code: 'modelFailed' };
+    const error = { code: raw.code };
+    if (raw.detail != null) error.detail = String(raw.detail);
+    await rejectCustom(custom, raw.code === 'customTooLarge' ? 'tooLarge' : 'testFailed', { error });
+    return;
+  }
+  const test = judgeCustomTest(message.times, message.replies);
+  if (!test.passed) {
+    await rejectCustom(custom, 'testFailed', { test });
+    return;
+  }
+  await writeCustom(Object.assign({}, custom, { phase: 'tested', test, deadline: Date.now() + Config.CUSTOM_KEEP_MS }));
+  // The document also wakes the service worker then (MODEL_TRIAL_CHECK): this one may be stopped before.
+  setTimeout(syncBuiltin, Config.CUSTOM_KEEP_MS + 500);
+}
+
+/**
+ * { passed, times, slowest, slow, expected, total, error? }: `slowest` is the longest decision
+ * after the warm-up one; above Config.CUSTOM_TEST_MAX_MS the version is refused, above
+ * CUSTOM_TEST_WARN_MS the panel warns. `expected` of `total` verdicts were the expected ones.
+ */
+function judgeCustomTest(times, replies) {
+  const total = CUSTOM_TEST_TEXTS.length;
+  const valid =
+    Array.isArray(times) && Array.isArray(replies) && times.length === total && replies.length === total && times.every(Number.isFinite);
+  if (!valid) return { passed: false, error: { code: 'invalidResponse' } };
+  const threshold = Config.AI_SENSITIVITIES[Config.DEFAULT_AI_SENSITIVITY];
+  let expected = 0;
+  try {
+    CUSTOM_TEST_TEXTS.forEach((sample, index) => {
+      const verdict = Evaluators.parseBasalResponse(replies[index], { threshold, topics: Config.DEFAULT_AI_TOPICS });
+      if (verdict.hide === sample.hide) expected += 1;
+    });
+  } catch (err) {
+    return { passed: false, times, error: describeError(err) };
+  }
+  const slowest = Math.max(...times.slice(1));
+  return {
+    passed: slowest <= Config.CUSTOM_TEST_MAX_MS,
+    times,
+    slowest,
+    slow: slowest > Config.CUSTOM_TEST_WARN_MS,
+    expected,
+    total,
+  };
+}
+
+/** The panel's "Keep": only a version that passed the self-test, before its time is up; it becomes the chosen model. */
+async function keepCustom() {
+  let error = null;
+  await builtinTask(async () => {
+    const custom = await readCustom();
+    if (!custom || custom.state !== 'trial' || custom.phase !== 'tested') {
+      error = Evaluators.codedError('customNotTested', 'no tested version to keep');
+      return;
+    }
+    if (!(Date.now() < custom.deadline)) {
+      await rejectCustom(custom, 'expired', { test: custom.test });
+      error = Evaluators.codedError('customExpired', 'the time to keep it is up');
+      return;
+    }
+    // One write: the version is kept and chosen together, or neither (the panel then shows the error).
+    await chrome.storage.local.set({
+      [Config.CUSTOM_MODEL_KEY]: { url: custom.url, name: custom.name, bytes: custom.bytes, state: 'kept', test: custom.test, keptAt: Date.now() },
+      aiModel: Config.CUSTOM_MODEL_ID,
+    });
+  });
+  if (error) throw error;
+  return customStatus();
+}
+
+/** The panel's "Reject" / "Remove": empties the slot; its file goes, and if it was chosen the default model is chosen instead. */
+async function discardCustom() {
+  await builtinTask(async () => {
+    const custom = await readCustom();
+    if (!custom) return;
+    if (custom.state !== 'rejected') {
+      await writeBuiltinRecord(customEntry(custom), 'missing');
+      await queueRemoval(custom.url);
+      await unchooseCustom();
+    }
+    await writeCustom(null);
+  });
+  return customStatus();
+}
+
+/**
+ * For the panel: { custom: <the slot's record> | null, live: { status, progress } | null, now }.
+ * `live` is the document's state while a trial downloads, loads or tests.
+ */
+async function customStatus() {
+  let live = null;
+  await builtinTask(async () => {
+    await expireCustomTrial();
+    const custom = await readCustom();
+    if (!custom || custom.state !== 'trial' || custom.phase !== 'download' || !(await hasBuiltinDocument())) return;
+    const entry = customEntry(custom);
+    const reply = await sendBuiltin({ type: Config.MSG.BUILTIN_STATUS, model: entry.id, url: entry.url });
+    if (reply && reply.ok && holds(reply.data, entry)) live = { status: reply.data.status, progress: reply.data.progress };
+  });
+  return { custom: await readCustom(), live, now: Date.now() };
 }
 
 /* ------------------------------------------------------------------ */
