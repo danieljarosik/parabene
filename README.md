@@ -55,9 +55,20 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of evaluations and statistics** (*Dziennik ocen i statystyki*) | Off by default. When on, every evaluated text is recorded locally, hidden or shown, with its page address and verdict (keywords, AI text model or AI image model). **Open statistics** (*Otwórz statystyki*) opens a page in a tab with the numbers, the sites and the entries, where verdicts can be corrected and the log downloaded or cleared. See [Statistics and the log of evaluations](#statistics-and-the-log-of-evaluations). |
 | **Backup** (*Kopia zapasowa*) | **Export settings** (*Eksportuj ustawienia*) saves every setting, the phrases, the excluded sites and the learned examples to one file; **Import settings…** (*Importuj ustawienia…*) restores it after a summary and warnings. See [Backup and keyword files](#backup-and-keyword-files). |
+| **Advanced** (*Zaawansowane*) | Collapsed by default, at the bottom of the panel. **Section order** (*Kolejność sekcji*) lists the cards from **Excluded sites** to **Backup**; the ↑ / ↓ buttons move a card up or down (the counter at the top and **Advanced** itself stay where they are). **Restore the default order and expand the sections** (*Przywróć domyślną kolejność i rozwiń sekcje*) brings back the default order and expands every card in that list; **Advanced** itself stays open. See [Panel layout](#panel-layout). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
+
+### Panel layout
+
+Every card except the counter can be collapsed and expanded by clicking its heading (the count next
+to it stays visible). The panel remembers which cards are collapsed (`collapsedSections`) and in
+which order they come (`sectionOrder`, set under **Advanced**), and the [settings backup](#full-settings-backups)
+includes both. They concern the panel only: changing them does not make open pages be judged again.
+A card added in a later version takes its default place in an order saved earlier.
+When a layout change cannot be stored (e.g. the extension's storage is full), the panel goes back to
+the stored layout and says so.
 
 ### How keyword matching works
 
@@ -112,7 +123,7 @@ parabene/
 ├── popup/
 │   ├── popup.html
 │   ├── popup.css
-│   ├── popup.js
+│   ├── popup.js           the panel: settings, lists, import/export, card order and collapsed cards
 │   └── log-card.js        the panel's card of the log: counts and the button to the statistics page
 ├── stats/                 the statistics page (opened in a tab), ES modules
 │   ├── stats.html, stats.css
@@ -180,7 +191,9 @@ All settings live in `chrome.storage.local`:
   "evalLogEnabled": false,
   "learnEnabled": false,
   "learnSimilarity": "medium",
-  "language": "pl"
+  "language": "pl",
+  "sectionOrder": ["sites", "keywords", "engine", "learn", "log", "backup"],
+  "collapsedSections": ["advanced"]
 }
 ```
 

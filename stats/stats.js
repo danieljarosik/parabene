@@ -70,7 +70,8 @@ async function applyLanguage(locale) {
 
 function onSettingsChanged(changes, area) {
   if (area !== 'local') return;
-  const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes);
+  // The panel's layout (Config.PANEL_SETTINGS) does not change this page.
+  const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes && !Config.PANEL_SETTINGS.includes(key));
   if (keys.length === 0) return;
   const next = Object.assign({}, ctx.settings);
   for (const key of keys) next[key] = changes[key].newValue;

@@ -2261,6 +2261,84 @@
     "message": "Zapisz w pliku wszystkie ustawienia, frazy i wyuczone przykłady, aby przywrócić je np. po ponownym zainstalowaniu rozszerzenia.",
     "description": "Description of the backup section."
   },
+  "advancedTitle": {
+    "message": "Zaawansowane",
+    "description": "Heading of the Advanced section at the bottom of the panel (collapsed by default)."
+  },
+  "sectionOrderTitle": {
+    "message": "Kolejność sekcji",
+    "description": "Subheading in Advanced: the list for reordering the panel's sections."
+  },
+  "sectionOrderHint": {
+    "message": "Ustaw sekcje panelu w wybranej kolejności strzałkami.",
+    "description": "Hint above the list of sections in Advanced."
+  },
+  "sectionMoveUp": {
+    "message": "W górę",
+    "description": "Tooltip of the ↑ button of a section in the order list."
+  },
+  "sectionMoveDown": {
+    "message": "W dół",
+    "description": "Tooltip of the ↓ button of a section in the order list."
+  },
+  "sectionMoveUpLabel": {
+    "message": "Przenieś „$section$” w górę",
+    "description": "Accessible name of the ↑ button of a section.",
+    "placeholders": {
+      "section": {
+        "content": "$1",
+        "example": "Słowa kluczowe"
+      }
+    }
+  },
+  "sectionMoveDownLabel": {
+    "message": "Przenieś „$section$” w dół",
+    "description": "Accessible name of the ↓ button of a section.",
+    "placeholders": {
+      "section": {
+        "content": "$1",
+        "example": "Słowa kluczowe"
+      }
+    }
+  },
+  "sectionMoved": {
+    "message": "„$section$” – pozycja $position$ z $total$.",
+    "description": "Status after moving a section.",
+    "placeholders": {
+      "section": {
+        "content": "$1",
+        "example": "Słowa kluczowe"
+      },
+      "position": {
+        "content": "$2",
+        "example": "1"
+      },
+      "total": {
+        "content": "$3",
+        "example": "6"
+      }
+    }
+  },
+  "sectionCollapseHint": {
+    "message": "Każdą sekcję zwiniesz lub rozwiniesz, klikając jej nagłówek. Panel zapamiętuje układ, a kopia zapasowa ustawień go zawiera.",
+    "description": "Hint in Advanced about collapsing sections."
+  },
+  "layoutReset": {
+    "message": "Przywróć domyślną kolejność i rozwiń sekcje",
+    "description": "Link in Advanced: default order of the sections, all expanded."
+  },
+  "layoutResetDone": {
+    "message": "Przywrócono domyślną kolejność i rozwinięto wszystkie sekcje z listy.",
+    "description": "Status after restoring the default layout."
+  },
+  "layoutAlreadyDefault": {
+    "message": "Sekcje z listy mają już domyślną kolejność i są rozwinięte.",
+    "description": "Status when the layout is already the default one."
+  },
+  "layoutSaveFailed": {
+    "message": "Nie udało się zapisać układu panelu – przywrócono ostatni zapisany.",
+    "description": "Error when the panel layout could not be stored; the panel shows the stored one again."
+  },
   "settingsExport": {
     "message": "Eksportuj ustawienia",
     "description": "Button that saves the settings backup file."

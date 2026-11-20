@@ -172,6 +172,39 @@
   });
   const DEFAULT_LANGUAGE = 'pl';
 
+  /**
+   * Layout of the panel (popup/), chosen under "Advanced": the order of its cards and which of them
+   * are collapsed. The counter at the top and "Advanced" at the bottom stay where they are; only
+   * PANEL_SECTIONS can be moved. The ids are stored in the settings (and in backups): do not
+   * rename them. A section added in a later version takes its default place in an older stored
+   * order (see sanitizeSectionOrder), so a new section needs no migration.
+   * These settings only concern the panel: pages are not judged again when they change.
+   */
+  const PANEL_SECTIONS = Object.freeze(['sites', 'keywords', 'engine', 'learn', 'log', 'backup']);
+  const COLLAPSIBLE_SECTIONS = Object.freeze([...PANEL_SECTIONS, 'advanced']);
+  const DEFAULT_COLLAPSED_SECTIONS = Object.freeze(['advanced']);
+  const PANEL_SETTINGS = Object.freeze(['sectionOrder', 'collapsedSections']);
+
+  /** Known sections in the given order, once each; a missing one goes back after its default predecessor. */
+  function sanitizeSectionOrder(list) {
+    const order = [];
+    for (const id of Array.isArray(list) ? list : []) {
+      if (PANEL_SECTIONS.includes(id) && !order.includes(id)) order.push(id);
+    }
+    PANEL_SECTIONS.forEach((id, index) => {
+      if (order.includes(id)) return;
+      const before = PANEL_SECTIONS.slice(0, index).reverse().find((prev) => order.includes(prev));
+      order.splice(before ? order.indexOf(before) + 1 : 0, 0, id);
+    });
+    return order;
+  }
+
+  /** Known collapsible sections, once each, in a fixed order (unknown ids are dropped). */
+  function sanitizeCollapsedSections(list) {
+    const ids = Array.isArray(list) ? list : [];
+    return COLLAPSIBLE_SECTIONS.filter((id) => ids.includes(id));
+  }
+
   /** Profanity stems — shown in the placeholder bar under the "profanity" category. */
   const PROFANITY = Object.freeze([
     'kurw',
@@ -243,6 +276,8 @@
     learnEnabled: false,
     learnSimilarity: DEFAULT_LEARN_SIMILARITY,
     language: DEFAULT_LANGUAGE,
+    sectionOrder: PANEL_SECTIONS,
+    collapsedSections: DEFAULT_COLLAPSED_SECTIONS,
   });
 
   const MSG = Object.freeze({
@@ -515,6 +550,11 @@
         return isSupportedSimilarity(value) ? value : undefined;
       case 'language':
         return isSupportedLanguage(value) ? value : undefined;
+      // Ids of sections from a newer version are dropped, as unknown settings are.
+      case 'sectionOrder':
+        return Array.isArray(value) && value.every((id) => typeof id === 'string') ? sanitizeSectionOrder(value) : undefined;
+      case 'collapsedSections':
+        return Array.isArray(value) && value.every((id) => typeof id === 'string') ? sanitizeCollapsedSections(value) : undefined;
       default:
         return undefined;
     }
@@ -541,6 +581,8 @@
       learnEnabled: s.learnEnabled === true,
       learnSimilarity: isSupportedSimilarity(s.learnSimilarity) ? s.learnSimilarity : DEFAULT_LEARN_SIMILARITY,
       language: isSupportedLanguage(s.language) ? s.language : DEFAULT_LANGUAGE,
+      sectionOrder: sanitizeSectionOrder(s.sectionOrder),
+      collapsedSections: Array.isArray(s.collapsedSections) ? sanitizeCollapsedSections(s.collapsedSections) : [...DEFAULT_COLLAPSED_SECTIONS],
     };
   }
 
@@ -615,6 +657,12 @@
     DEFAULT_LANGUAGE,
     DEFAULT_KEYWORDS,
     DEFAULT_SETTINGS,
+    PANEL_SECTIONS,
+    COLLAPSIBLE_SECTIONS,
+    DEFAULT_COLLAPSED_SECTIONS,
+    PANEL_SETTINGS,
+    sanitizeSectionOrder,
+    sanitizeCollapsedSections,
     normalizeSite,
     siteHost,
     isSiteExcluded,

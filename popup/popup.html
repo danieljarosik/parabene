@@ -74,228 +74,259 @@
         </div>
       </section>
 
-      <section class="card">
+      <!-- A layout change that could not be stored, while "Advanced" (and its status line) is collapsed. -->
+      <p class="hint hint--error layout__error" id="layout-error" role="alert" hidden></p>
+
+      <section class="card" data-section="sites">
         <div class="card__head">
-          <h2 id="sites-title" data-i18n="sitesTitle"></h2>
+          <h2 id="sites-title"><button type="button" class="card__toggle" aria-expanded="true" aria-controls="sites-body"><span data-i18n="sitesTitle"></span></button></h2>
           <span class="count" id="site-count">0</span>
         </div>
-        <form class="row" id="site-form" autocomplete="off">
-          <input type="text" id="site-input" class="input" spellcheck="false" inputmode="url"
-            data-i18n-placeholder="sitePlaceholder" data-i18n-aria-label="siteInputLabel" />
-          <button type="submit" class="btn btn--primary" data-i18n="keywordAdd"></button>
-        </form>
-        <p class="hint" id="site-feedback" role="status" data-i18n="sitesHint"></p>
-        <ul class="chips" id="site-list" aria-labelledby="sites-title"></ul>
-        <p class="empty" id="site-empty" data-i18n="sitesEmpty" hidden></p>
-        <div class="card__actions">
-          <button type="button" class="link" id="exclude-current-site" data-i18n="excludeCurrentSite" hidden></button>
-          <span class="card__actions-group">
-            <button type="button" class="link" id="sites-export" data-i18n="keywordsExport"></button>
-            <button type="button" class="link" id="sites-import" data-i18n="keywordsImport"></button>
-          </span>
+        <div class="card__body" id="sites-body">
+          <form class="row" id="site-form" autocomplete="off">
+            <input type="text" id="site-input" class="input" spellcheck="false" inputmode="url"
+              data-i18n-placeholder="sitePlaceholder" data-i18n-aria-label="siteInputLabel" />
+            <button type="submit" class="btn btn--primary" data-i18n="keywordAdd"></button>
+          </form>
+          <p class="hint" id="site-feedback" role="status" data-i18n="sitesHint"></p>
+          <ul class="chips" id="site-list" aria-labelledby="sites-title"></ul>
+          <p class="empty" id="site-empty" data-i18n="sitesEmpty" hidden></p>
+          <div class="card__actions">
+            <button type="button" class="link" id="exclude-current-site" data-i18n="excludeCurrentSite" hidden></button>
+            <span class="card__actions-group">
+              <button type="button" class="link" id="sites-export" data-i18n="keywordsExport"></button>
+              <button type="button" class="link" id="sites-import" data-i18n="keywordsImport"></button>
+            </span>
+          </div>
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" data-section="keywords">
         <div class="card__head">
-          <h2 data-i18n="keywordsTitle"></h2>
+          <h2><button type="button" class="card__toggle" aria-expanded="true" aria-controls="keywords-body"><span data-i18n="keywordsTitle"></span></button></h2>
           <span class="count" id="keyword-count">0</span>
         </div>
-        <form class="row" id="keyword-form" autocomplete="off">
-          <input
-            type="text"
-            id="keyword-input"
-            class="input"
-            maxlength="400"
-            data-i18n-placeholder="keywordPlaceholder"
-            data-i18n-aria-label="keywordInputLabel"
-          />
-          <button type="submit" class="btn btn--primary" data-i18n="keywordAdd"></button>
-        </form>
-        <p class="hint" id="keyword-feedback" data-i18n="keywordHint"></p>
-        <ul class="chips" id="keyword-list" data-i18n-aria-label="keywordListLabel"></ul>
-        <p class="empty" id="keyword-empty" data-i18n="keywordEmpty" hidden></p>
-        <div class="card__actions">
-          <button type="button" class="link" id="restore-defaults" data-i18n="restoreDefaults"></button>
-          <span class="card__actions-group">
-            <button type="button" class="link" id="keywords-export" data-i18n="keywordsExport"></button>
-            <button type="button" class="link" id="keywords-import" data-i18n="keywordsImport"></button>
-          </span>
+        <div class="card__body" id="keywords-body">
+          <form class="row" id="keyword-form" autocomplete="off">
+            <input
+              type="text"
+              id="keyword-input"
+              class="input"
+              maxlength="400"
+              data-i18n-placeholder="keywordPlaceholder"
+              data-i18n-aria-label="keywordInputLabel"
+            />
+            <button type="submit" class="btn btn--primary" data-i18n="keywordAdd"></button>
+          </form>
+          <p class="hint" id="keyword-feedback" data-i18n="keywordHint"></p>
+          <ul class="chips" id="keyword-list" data-i18n-aria-label="keywordListLabel"></ul>
+          <p class="empty" id="keyword-empty" data-i18n="keywordEmpty" hidden></p>
+          <div class="card__actions">
+            <button type="button" class="link" id="restore-defaults" data-i18n="restoreDefaults"></button>
+            <span class="card__actions-group">
+              <button type="button" class="link" id="keywords-export" data-i18n="keywordsExport"></button>
+              <button type="button" class="link" id="keywords-import" data-i18n="keywordsImport"></button>
+            </span>
+          </div>
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" data-section="engine">
         <div class="card__head">
-          <h2 data-i18n="engineTitle"></h2>
+          <h2><button type="button" class="card__toggle" aria-expanded="true" aria-controls="engine-body"><span data-i18n="engineTitle"></span></button></h2>
         </div>
+        <div class="card__body" id="engine-body">
 
-        <div class="engine engine--on">
-          <div class="engine__text">
-            <strong data-i18n="engineKeywordsName"></strong>
-            <span data-i18n="engineKeywordsDesc"></span>
-          </div>
-          <span class="pill" data-i18n="engineActive"></span>
-        </div>
-
-        <div class="engine">
-          <div class="engine__text">
-            <strong data-i18n="engineAiName"></strong>
-            <span data-i18n="engineAiDesc"></span>
-          </div>
-          <label class="switch" data-i18n-title="engineAiToggleLabel">
-            <input type="checkbox" id="ai-enabled" role="switch" data-i18n-aria-label="engineAiToggleLabel" />
-            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          </label>
-        </div>
-
-        <div class="ai" id="ai-settings">
-          <label class="ai__label" for="ai-protocol" data-i18n="aiProtocolLabel"></label>
-          <select id="ai-protocol" class="input ai__select">
-            <option value="simple" data-i18n="aiProtocol_simple"></option>
-            <option value="basal" data-i18n="aiProtocol_basal"></option>
-            <option value="builtin" data-i18n="aiProtocol_builtin"></option>
-          </select>
-          <div class="model" id="ai-model" hidden>
-            <label class="ai__label" for="ai-model-select" data-i18n="aiModelLabel"></label>
-            <select id="ai-model-select" class="input ai__select"></select>
-            <p class="hint" id="ai-model-note"></p>
-            <p class="hint model__status" id="ai-model-status" role="status"></p>
-            <progress class="model__progress" id="ai-model-progress" max="100" value="0" aria-labelledby="ai-model-status" hidden></progress>
-            <button type="button" class="btn btn--primary" id="ai-model-download" hidden></button>
-            <p class="hint" data-i18n="aiBuiltinHint"></p>
-          </div>
-          <label class="ai__label" for="ai-endpoint" id="ai-endpoint-label" data-i18n="aiEndpointLabel"></label>
-          <div class="row">
-            <input
-              type="url"
-              id="ai-endpoint"
-              class="input input--mono"
-              spellcheck="false"
-              placeholder="http://localhost:8000/classify"
-            />
-            <button type="button" class="btn" id="ai-test" data-i18n="aiTest"></button>
-          </div>
-          <p class="hint" id="ai-status" data-i18n="aiHint"></p>
-
-          <label class="ai__label ai__label--section" for="ai-mode" data-i18n="aiModeLabel"></label>
-          <select id="ai-mode" class="input ai__select">
-            <option value="both" data-i18n="aiMode_both"></option>
-            <option value="ai" data-i18n="aiMode_ai"></option>
-          </select>
-        </div>
-
-        <div class="engine engine--split">
-          <div class="engine__text">
-            <strong data-i18n="engineImagesName"></strong>
-            <span data-i18n="engineImagesDesc"></span>
-          </div>
-          <label class="switch" data-i18n-title="engineImagesToggleLabel">
-            <input type="checkbox" id="ai-images-enabled" role="switch" data-i18n-aria-label="engineImagesToggleLabel" />
-            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          </label>
-        </div>
-
-        <div class="ai" id="ai-images-settings">
-          <label class="ai__label" for="ai-images-endpoint" data-i18n="aiImagesEndpointLabel"></label>
-          <div class="row">
-            <input
-              type="url"
-              id="ai-images-endpoint"
-              class="input input--mono"
-              spellcheck="false"
-              placeholder="http://localhost:8011"
-            />
-            <button type="button" class="btn" id="ai-images-test" data-i18n="aiTest"></button>
-          </div>
-          <p class="hint" id="ai-images-status" data-i18n="aiImagesHint"></p>
-        </div>
-
-        <div class="ai ai--follow" id="basal-settings">
-          <label class="ai__label" for="ai-sensitivity" data-i18n="aiSensitivityLabel"></label>
-          <select id="ai-sensitivity" class="input ai__select">
-            <option value="low" data-i18n="aiSensitivity_low"></option>
-            <option value="medium" data-i18n="aiSensitivity_medium"></option>
-            <option value="high" data-i18n="aiSensitivity_high"></option>
-          </select>
-          <fieldset class="topics">
-            <legend class="ai__label" data-i18n="aiTopicsLabel"></legend>
-            <div class="topics__grid" id="ai-topics">
-              <label class="topic"><input type="checkbox" value="accident" /><span data-i18n="category_accident"></span></label>
-              <label class="topic"><input type="checkbox" value="violence" /><span data-i18n="category_violence"></span></label>
-              <label class="topic"><input type="checkbox" value="death" /><span data-i18n="category_death"></span></label>
-              <label class="topic"><input type="checkbox" value="profanity" /><span data-i18n="category_profanity"></span></label>
-              <label class="topic"><input type="checkbox" value="politics" /><span data-i18n="category_politics"></span></label>
-              <label class="topic"><input type="checkbox" value="clickbait" /><span data-i18n="category_clickbait"></span></label>
+          <div class="engine engine--on">
+            <div class="engine__text">
+              <strong data-i18n="engineKeywordsName"></strong>
+              <span data-i18n="engineKeywordsDesc"></span>
             </div>
-            <p class="hint hint--error" id="ai-topics-empty" data-i18n="aiTopicsEmpty" hidden></p>
-          </fieldset>
+            <span class="pill" data-i18n="engineActive"></span>
+          </div>
+
+          <div class="engine">
+            <div class="engine__text">
+              <strong data-i18n="engineAiName"></strong>
+              <span data-i18n="engineAiDesc"></span>
+            </div>
+            <label class="switch" data-i18n-title="engineAiToggleLabel">
+              <input type="checkbox" id="ai-enabled" role="switch" data-i18n-aria-label="engineAiToggleLabel" />
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+          </div>
+
+          <div class="ai" id="ai-settings">
+            <label class="ai__label" for="ai-protocol" data-i18n="aiProtocolLabel"></label>
+            <select id="ai-protocol" class="input ai__select">
+              <option value="simple" data-i18n="aiProtocol_simple"></option>
+              <option value="basal" data-i18n="aiProtocol_basal"></option>
+              <option value="builtin" data-i18n="aiProtocol_builtin"></option>
+            </select>
+            <div class="model" id="ai-model" hidden>
+              <label class="ai__label" for="ai-model-select" data-i18n="aiModelLabel"></label>
+              <select id="ai-model-select" class="input ai__select"></select>
+              <p class="hint" id="ai-model-note"></p>
+              <p class="hint model__status" id="ai-model-status" role="status"></p>
+              <progress class="model__progress" id="ai-model-progress" max="100" value="0" aria-labelledby="ai-model-status" hidden></progress>
+              <button type="button" class="btn btn--primary" id="ai-model-download" hidden></button>
+              <p class="hint" data-i18n="aiBuiltinHint"></p>
+            </div>
+            <label class="ai__label" for="ai-endpoint" id="ai-endpoint-label" data-i18n="aiEndpointLabel"></label>
+            <div class="row">
+              <input
+                type="url"
+                id="ai-endpoint"
+                class="input input--mono"
+                spellcheck="false"
+                placeholder="http://localhost:8000/classify"
+              />
+              <button type="button" class="btn" id="ai-test" data-i18n="aiTest"></button>
+            </div>
+            <p class="hint" id="ai-status" data-i18n="aiHint"></p>
+
+            <label class="ai__label ai__label--section" for="ai-mode" data-i18n="aiModeLabel"></label>
+            <select id="ai-mode" class="input ai__select">
+              <option value="both" data-i18n="aiMode_both"></option>
+              <option value="ai" data-i18n="aiMode_ai"></option>
+            </select>
+          </div>
+
+          <div class="engine engine--split">
+            <div class="engine__text">
+              <strong data-i18n="engineImagesName"></strong>
+              <span data-i18n="engineImagesDesc"></span>
+            </div>
+            <label class="switch" data-i18n-title="engineImagesToggleLabel">
+              <input type="checkbox" id="ai-images-enabled" role="switch" data-i18n-aria-label="engineImagesToggleLabel" />
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+          </div>
+
+          <div class="ai" id="ai-images-settings">
+            <label class="ai__label" for="ai-images-endpoint" data-i18n="aiImagesEndpointLabel"></label>
+            <div class="row">
+              <input
+                type="url"
+                id="ai-images-endpoint"
+                class="input input--mono"
+                spellcheck="false"
+                placeholder="http://localhost:8011"
+              />
+              <button type="button" class="btn" id="ai-images-test" data-i18n="aiTest"></button>
+            </div>
+            <p class="hint" id="ai-images-status" data-i18n="aiImagesHint"></p>
+          </div>
+
+          <div class="ai ai--follow" id="basal-settings">
+            <label class="ai__label" for="ai-sensitivity" data-i18n="aiSensitivityLabel"></label>
+            <select id="ai-sensitivity" class="input ai__select">
+              <option value="low" data-i18n="aiSensitivity_low"></option>
+              <option value="medium" data-i18n="aiSensitivity_medium"></option>
+              <option value="high" data-i18n="aiSensitivity_high"></option>
+            </select>
+            <fieldset class="topics">
+              <legend class="ai__label" data-i18n="aiTopicsLabel"></legend>
+              <div class="topics__grid" id="ai-topics">
+                <label class="topic"><input type="checkbox" value="accident" /><span data-i18n="category_accident"></span></label>
+                <label class="topic"><input type="checkbox" value="violence" /><span data-i18n="category_violence"></span></label>
+                <label class="topic"><input type="checkbox" value="death" /><span data-i18n="category_death"></span></label>
+                <label class="topic"><input type="checkbox" value="profanity" /><span data-i18n="category_profanity"></span></label>
+                <label class="topic"><input type="checkbox" value="politics" /><span data-i18n="category_politics"></span></label>
+                <label class="topic"><input type="checkbox" value="clickbait" /><span data-i18n="category_clickbait"></span></label>
+              </div>
+              <p class="hint hint--error" id="ai-topics-empty" data-i18n="aiTopicsEmpty" hidden></p>
+            </fieldset>
+          </div>
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" data-section="learn">
         <div class="card__head">
-          <h2 data-i18n="learnTitle"></h2>
+          <h2><button type="button" class="card__toggle" aria-expanded="true" aria-controls="learn-body"><span data-i18n="learnTitle"></span></button></h2>
           <span class="count" id="learn-count">0</span>
         </div>
-        <div class="engine engine--first">
-          <div class="engine__text">
-            <strong data-i18n="learnToggleName"></strong>
-            <span data-i18n="learnDesc"></span>
+        <div class="card__body" id="learn-body">
+          <div class="engine engine--first">
+            <div class="engine__text">
+              <strong data-i18n="learnToggleName"></strong>
+              <span data-i18n="learnDesc"></span>
+            </div>
+            <label class="switch" data-i18n-title="learnToggleName">
+              <input type="checkbox" id="learn-enabled" role="switch" data-i18n-aria-label="learnToggleName" />
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
           </div>
-          <label class="switch" data-i18n-title="learnToggleName">
-            <input type="checkbox" id="learn-enabled" role="switch" data-i18n-aria-label="learnToggleName" />
-            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          </label>
-        </div>
-        <div class="ai" id="learn-settings">
-          <label class="ai__label" for="learn-similarity" data-i18n="learnSimilarityLabel"></label>
-          <select id="learn-similarity" class="input ai__select">
-            <option value="strict" data-i18n="learnSimilarity_strict"></option>
-            <option value="medium" data-i18n="learnSimilarity_medium"></option>
-            <option value="loose" data-i18n="learnSimilarity_loose"></option>
-          </select>
-          <p class="hint" id="learn-status" data-i18n="learnOff"></p>
-        </div>
-        <details class="learned" id="learn-details">
-          <summary data-i18n="learnShowList"></summary>
-          <ul class="learned__list" id="learn-list" data-i18n-aria-label="learnListLabel"></ul>
-        </details>
-        <div class="log__actions learned__actions">
-          <button type="button" class="link" id="learn-clear" data-i18n="learnClear"></button>
+          <div class="ai" id="learn-settings">
+            <label class="ai__label" for="learn-similarity" data-i18n="learnSimilarityLabel"></label>
+            <select id="learn-similarity" class="input ai__select">
+              <option value="strict" data-i18n="learnSimilarity_strict"></option>
+              <option value="medium" data-i18n="learnSimilarity_medium"></option>
+              <option value="loose" data-i18n="learnSimilarity_loose"></option>
+            </select>
+            <p class="hint" id="learn-status" data-i18n="learnOff"></p>
+          </div>
+          <details class="learned" id="learn-details">
+            <summary data-i18n="learnShowList"></summary>
+            <ul class="learned__list" id="learn-list" data-i18n-aria-label="learnListLabel"></ul>
+          </details>
+          <div class="log__actions learned__actions">
+            <button type="button" class="link" id="learn-clear" data-i18n="learnClear"></button>
+          </div>
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" data-section="log">
         <div class="card__head">
-          <h2 data-i18n="logTitle"></h2>
+          <h2><button type="button" class="card__toggle" aria-expanded="true" aria-controls="log-body"><span data-i18n="logTitle"></span></button></h2>
           <span class="count" id="log-count">0</span>
         </div>
-        <div class="engine engine--first">
-          <div class="engine__text">
-            <strong data-i18n="logToggleName"></strong>
-            <span data-i18n="logDesc"></span>
+        <div class="card__body" id="log-body">
+          <div class="engine engine--first">
+            <div class="engine__text">
+              <strong data-i18n="logToggleName"></strong>
+              <span data-i18n="logDesc"></span>
+            </div>
+            <label class="switch" data-i18n-title="logToggleName">
+              <input type="checkbox" id="log-enabled" role="switch" data-i18n-aria-label="logToggleName" />
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
           </div>
-          <label class="switch" data-i18n-title="logToggleName">
-            <input type="checkbox" id="log-enabled" role="switch" data-i18n-aria-label="logToggleName" />
-            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          </label>
-        </div>
-        <p class="hint" id="log-status" data-i18n="logEmpty"></p>
-        <div class="log__actions">
-          <button type="button" class="btn" id="log-open" data-i18n="logOpenStats"></button>
+          <p class="hint" id="log-status" data-i18n="logEmpty"></p>
+          <div class="log__actions">
+            <button type="button" class="btn" id="log-open" data-i18n="logOpenStats"></button>
+          </div>
         </div>
       </section>
 
-      <section class="card" id="backup-card">
+      <section class="card" id="backup-card" data-section="backup">
         <div class="card__head">
-          <h2 data-i18n="backupTitle"></h2>
+          <h2><button type="button" class="card__toggle" aria-expanded="true" aria-controls="backup-body"><span data-i18n="backupTitle"></span></button></h2>
         </div>
-        <p class="hint hint--lead" data-i18n="backupDesc"></p>
-        <div class="backup__actions">
-          <button type="button" class="btn" id="settings-export" data-i18n="settingsExport"></button>
-          <button type="button" class="btn" id="settings-import" data-i18n="settingsImport"></button>
+        <div class="card__body" id="backup-body">
+          <p class="hint hint--lead" data-i18n="backupDesc"></p>
+          <div class="backup__actions">
+            <button type="button" class="btn" id="settings-export" data-i18n="settingsExport"></button>
+            <button type="button" class="btn" id="settings-import" data-i18n="settingsImport"></button>
+          </div>
+          <p class="hint" id="backup-status" role="status"></p>
         </div>
-        <p class="hint" id="backup-status" role="status"></p>
+      </section>
+
+      <section class="card card--collapsed" id="advanced-card">
+        <div class="card__head">
+          <h2><button type="button" class="card__toggle" aria-expanded="false" aria-controls="advanced-body"><span data-i18n="advancedTitle"></span></button></h2>
+        </div>
+        <div class="card__body" id="advanced-body" hidden>
+          <h3 class="subhead" id="section-order-title" data-i18n="sectionOrderTitle"></h3>
+          <p class="hint hint--lead" data-i18n="sectionOrderHint"></p>
+          <ol class="order" id="section-order" aria-labelledby="section-order-title"></ol>
+          <p class="hint" data-i18n="sectionCollapseHint"></p>
+          <div class="card__actions">
+            <button type="button" class="link" id="layout-reset" data-i18n="layoutReset"></button>
+          </div>
+          <p class="hint layout__status" id="layout-status" role="status"></p>
+        </div>
       </section>
 
       <footer class="footer">

@@ -92,7 +92,25 @@
     importFile: document.getElementById('import-file'),
     version: document.getElementById('version'),
     language: document.getElementById('language'),
+    advancedCard: document.getElementById('advanced-card'),
+    sectionOrder: document.getElementById('section-order'),
+    layoutReset: document.getElementById('layout-reset'),
+    layoutStatus: document.getElementById('layout-status'),
+    layoutError: document.getElementById('layout-error'),
   };
+
+  /**
+   * The collapsible cards by section id (Config.COLLAPSIBLE_SECTIONS): the card, its heading button,
+   * its body ("<id>-body") and the message key of its title.
+   */
+  const sections = new Map(
+    Config.COLLAPSIBLE_SECTIONS.map((id) => {
+      const body = document.getElementById(`${id}-body`);
+      const card = body.closest('.card');
+      const toggle = card.querySelector('.card__toggle');
+      return [id, { card, body, toggle, title: toggle.querySelector('[data-i18n]').getAttribute('data-i18n') }];
+    })
+  );
 
   let settings = Config.sanitize({});
   let activeTabId = null;
@@ -153,7 +171,7 @@
 
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
-    for (const hint of [els.keywordFeedback, els.siteFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus]) {
+    for (const hint of [els.keywordFeedback, els.siteFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus, els.layoutStatus]) {
       clearTimeout(feedbackTimers.get(hint));
       feedbackTimers.delete(hint);
       hint.classList.remove('hint--ok', 'hint--error');
@@ -161,6 +179,8 @@
     // Unlike the other hints these have no text to translate again: a message in the old language goes.
     els.backupStatus.textContent = '';
     els.importStatus.textContent = '';
+    els.layoutStatus.textContent = '';
+    els.layoutError.hidden = true;
     I18n.localize(document, i18n);
     if (importKind) document.title = t('importWindowTitle', t(`importTitle_${importKind}`));
     render();
@@ -225,6 +245,132 @@
     renderLearned();
     renderListImport();
     renderSettingsImport();
+    renderLayout();
+  }
+
+  /* ---------------- Layout: order of the cards, collapsed cards ---------------- */
+
+  /** Puts the cards in the stored order and opens or collapses each one. */
+  function renderLayout() {
+    const current = [...els.app.querySelectorAll(':scope > [data-section]')].map((card) => card.dataset.section);
+    if (current.join() !== settings.sectionOrder.join()) {
+      // Moving a card takes the focus out of it (an order changed in another window): give it back.
+      const focused = document.activeElement;
+      for (const id of settings.sectionOrder) els.advancedCard.before(sections.get(id).card);
+      if (focused && focused !== document.activeElement && focused.isConnected) focused.focus({ preventScroll: true });
+    }
+    for (const [id, { card, body, toggle }] of sections) {
+      const collapsed = settings.collapsedSections.includes(id);
+      card.classList.toggle('card--collapsed', collapsed);
+      body.hidden = collapsed;
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+    }
+    renderSectionOrder();
+  }
+
+  /** The list under "Advanced" with a "move up" and a "move down" button for each card. */
+  function renderSectionOrder() {
+    const order = settings.sectionOrder;
+    // The list is drawn anew: a focused button keeps the focus (or its neighbour, once disabled).
+    const active = els.sectionOrder.contains(document.activeElement) ? document.activeElement : null;
+    const items = order.map((id, index) => {
+      const name = t(sections.get(id).title);
+      const item = document.createElement('li');
+      item.className = 'order__item';
+      const position = document.createElement('span');
+      position.className = 'order__position';
+      position.setAttribute('aria-hidden', 'true');
+      position.textContent = `${i18n.formatNumber(index + 1)}.`;
+      const label = document.createElement('span');
+      label.className = 'order__name';
+      label.textContent = name;
+      const up = moveButton(id, -1, name, index === 0);
+      const down = moveButton(id, 1, name, index === order.length - 1);
+      item.append(position, label, up, down);
+      return item;
+    });
+    els.sectionOrder.replaceChildren(...items);
+    if (active) {
+      const buttons = [...els.sectionOrder.querySelectorAll('.order__move')].filter((button) => button.dataset.id === active.dataset.id);
+      const target = buttons.find((button) => button.dataset.step === active.dataset.step && !button.disabled) ||
+        buttons.find((button) => !button.disabled);
+      if (target) target.focus();
+    }
+  }
+
+  function moveButton(id, step, name, disabled) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'order__move';
+    button.dataset.id = id;
+    button.dataset.step = String(step);
+    button.disabled = disabled;
+    button.textContent = step < 0 ? '↑' : '↓';
+    button.title = t(step < 0 ? 'sectionMoveUp' : 'sectionMoveDown');
+    button.setAttribute('aria-label', t(step < 0 ? 'sectionMoveUpLabel' : 'sectionMoveDownLabel', name));
+    return button;
+  }
+
+  /** Applies a layout change at once and stores it (the storage listener then only redraws the layout). */
+  function saveLayout(change) {
+    settings = Config.sanitize(Object.assign({}, settings, change));
+    renderLayout();
+    const stored = {};
+    for (const key of Object.keys(change)) stored[key] = settings[key];
+    chrome.storage.local.set(stored).then(() => { els.layoutError.hidden = true; }, restoreLayout);
+  }
+
+  /**
+   * A layout change that could not be stored (e.g. the storage is full): the panel goes back to the
+   * stored layout, so it does not show one that the next opening would not, and says so — under
+   * "Advanced" and, while that card is collapsed, above the cards.
+   */
+  async function restoreLayout(err) {
+    console.error('[ParaBene]', err);
+    try {
+      const stored = Config.sanitize(await chrome.storage.local.get(Config.PANEL_SETTINGS));
+      const layout = {};
+      for (const key of Config.PANEL_SETTINGS) layout[key] = stored[key];
+      settings = Config.sanitize(Object.assign({}, settings, layout));
+      renderLayout();
+    } catch (readErr) {
+      console.error('[ParaBene]', readErr);
+    }
+    const message = t('layoutSaveFailed');
+    showFeedback(els.layoutStatus, message, 'error');
+    els.layoutError.textContent = message;
+    els.layoutError.hidden = !settings.collapsedSections.includes('advanced');
+  }
+
+  function moveSection(id, step) {
+    const order = [...settings.sectionOrder];
+    const from = order.indexOf(id);
+    const to = from + step;
+    if (from < 0 || to < 0 || to >= order.length) return;
+    order.splice(to, 0, ...order.splice(from, 1));
+    saveLayout({ sectionOrder: order });
+    showFeedback(els.layoutStatus, t('sectionMoved', [t(sections.get(id).title), i18n.formatNumber(to + 1), i18n.formatNumber(order.length)]), null);
+  }
+
+  function toggleSection(id) {
+    const collapsed = settings.collapsedSections;
+    saveLayout({ collapsedSections: collapsed.includes(id) ? collapsed.filter((other) => other !== id) : [...collapsed, id] });
+  }
+
+  /**
+   * The default order with every card of the list open. "Advanced" itself stays as it is: the
+   * button and its status line are inside it (the texts say that the reset concerns the list).
+   */
+  function resetLayout() {
+    const collapsed = settings.collapsedSections.filter((id) => !Config.PANEL_SECTIONS.includes(id));
+    const unchanged = settings.sectionOrder.join() === Config.PANEL_SECTIONS.join() &&
+      collapsed.length === settings.collapsedSections.length;
+    if (unchanged) {
+      showFeedback(els.layoutStatus, t('layoutAlreadyDefault'), null);
+      return;
+    }
+    saveLayout({ sectionOrder: [...Config.PANEL_SECTIONS], collapsedSections: collapsed });
+    showFeedback(els.layoutStatus, t('layoutResetDone'), 'ok');
   }
 
   function renderChips(list, values, { masked, added, removeTitle, removeLabel, onRemove }) {
@@ -1176,6 +1322,12 @@
       }
     });
     els.learnClear.addEventListener('click', clearLearned);
+    for (const [id, { toggle }] of sections) toggle.addEventListener('click', () => toggleSection(id));
+    els.sectionOrder.addEventListener('click', (event) => {
+      const button = event.target.closest('.order__move');
+      if (button && !button.disabled) moveSection(button.dataset.id, Number(button.dataset.step));
+    });
+    els.layoutReset.addEventListener('click', resetLayout);
     els.language.addEventListener('change', () => {
       if (Config.isSupportedLanguage(els.language.value)) {
         chrome.storage.local.set({ language: els.language.value });
@@ -1198,6 +1350,10 @@
       const next = Object.assign({}, settings);
       for (const key of keys) next[key] = changes[key].newValue;
       settings = Config.sanitize(next);
+      if (keys.every((key) => Config.PANEL_SETTINGS.includes(key))) {
+        renderLayout();
+        return;
+      }
       // Not when the panel already switched (a restored backup): a second switch would clear its message.
       if (settings.language !== uiLanguage) {
         applyLanguage(settings.language).catch((err) => console.error('[ParaBene]', err));

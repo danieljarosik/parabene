@@ -2261,6 +2261,71 @@
     "message": "Save all settings, phrases and learned examples to a file to restore them, e.g. after reinstalling the extension.",
     "description": "Description of the backup section."
   },
+  "advancedTitle": {
+    "message": "Advanced"
+  },
+  "sectionOrderTitle": {
+    "message": "Section order"
+  },
+  "sectionOrderHint": {
+    "message": "Use the arrows to put the panel's sections in the order you like."
+  },
+  "sectionMoveUp": {
+    "message": "Move up"
+  },
+  "sectionMoveDown": {
+    "message": "Move down"
+  },
+  "sectionMoveUpLabel": {
+    "message": "Move “$section$” up",
+    "placeholders": {
+      "section": {
+        "content": "$1",
+        "example": "Keywords"
+      }
+    }
+  },
+  "sectionMoveDownLabel": {
+    "message": "Move “$section$” down",
+    "placeholders": {
+      "section": {
+        "content": "$1",
+        "example": "Keywords"
+      }
+    }
+  },
+  "sectionMoved": {
+    "message": "“$section$” – position $position$ of $total$.",
+    "placeholders": {
+      "section": {
+        "content": "$1",
+        "example": "Keywords"
+      },
+      "position": {
+        "content": "$2",
+        "example": "1"
+      },
+      "total": {
+        "content": "$3",
+        "example": "6"
+      }
+    }
+  },
+  "sectionCollapseHint": {
+    "message": "Click a section's heading to collapse or expand it. The panel remembers the layout, and the settings backup includes it."
+  },
+  "layoutReset": {
+    "message": "Restore the default order and expand the sections"
+  },
+  "layoutResetDone": {
+    "message": "Restored the default order and expanded all sections in the list."
+  },
+  "layoutAlreadyDefault": {
+    "message": "The sections in the list already have the default order and are expanded."
+  },
+  "layoutSaveFailed": {
+    "message": "Could not save the panel layout – the last saved one is back."
+  },
   "settingsExport": {
     "message": "Export settings",
     "description": "Button that saves the settings backup file."

@@ -1361,7 +1361,8 @@
         start();
       }
     }
-    const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes);
+    // The panel's layout (Config.PANEL_SETTINGS) means nothing to a page.
+    const keys = Object.keys(Config.DEFAULT_SETTINGS).filter((key) => key in changes && !Config.PANEL_SETTINGS.includes(key));
     if (keys.length === 0) return;
     const next = Object.assign({}, state.settings);
     for (const key of keys) {

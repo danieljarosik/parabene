@@ -167,6 +167,138 @@ body {
   margin-bottom: 10px;
 }
 
+/* Collapsible cards: the heading is a button; the panel remembers the state (collapsedSections) */
+
+.card__head h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.card__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: -4px 0;
+  padding: 4px 8px 4px 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.card__toggle::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px 0 3px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.card__toggle[aria-expanded="false"]::before {
+  transform: rotate(-45deg);
+}
+
+.card__toggle:hover::before {
+  border-color: var(--accent-strong);
+}
+
+.card__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card--collapsed .card__head {
+  margin-bottom: 0;
+}
+
+/* Advanced: the order of the cards */
+
+.subhead {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.order {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fffaf2;
+  font-size: 13px;
+}
+
+.order__position {
+  min-width: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.order__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.order__move {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent-strong);
+  font: 700 14px/1 var(--font);
+  cursor: pointer;
+}
+
+.order__move:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: #ecc89c;
+}
+
+.order__move:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.order__move:disabled {
+  color: var(--border);
+  cursor: default;
+}
+
+.layout__status:empty {
+  display: none;
+}
+
+.layout__error {
+  margin: 0;
+  padding: 0 4px;
+}
+
 .count {
   min-width: 24px;
   padding: 1px 8px;
