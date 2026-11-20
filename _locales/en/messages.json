@@ -2866,6 +2866,16 @@
       }
     }
   },
+  "importWarn_exceptionsSkipped": {
+    "message": "Exceptions to keywords skipped as invalid: $count$.",
+    "description": "Import warning: some exceptions to keywords in the backup were rejected.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
   "importWarn_sitesSkipped": {
     "message": "Sites skipped as invalid: $count$.",
     "description": "Import warning: some excluded sites in the backup were rejected.",
@@ -2981,5 +2991,139 @@
   },
   "importError_sitesFile": {
     "message": "This is an excluded sites list. Import it in the Excluded sites section."
+  },
+  "exceptionsTitle": {
+    "message": "Exceptions to keywords",
+    "description": "Subheading in Advanced: Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsHint": {
+    "message": "A keyword does not hide a text that also contains one of the given contexts. Other keywords still hide it. Exceptions apply to keywords only, not to the AI model's verdicts.",
+    "description": "Explanation under the heading of Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsPlaceholder": {
+    "message": "kradzież | cyberatak, haker, wyciek danych",
+    "description": "Placeholder of the field of Exceptions to keywords in “Advanced”: an example rule (Polish phrases, as the default keyword list is Polish)."
+  },
+  "exceptionsFormat": {
+    "message": "One rule per line: phrase | contexts separated by commas. As with keywords, matching starts at the beginning of a word, so enter stems: “cyberatak” also covers “cyberataku”. Lines starting with # are skipped. Ctrl+Enter saves.",
+    "description": "Format of the field of Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsSave": {
+    "message": "Save exceptions",
+    "description": "Button saving Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsSaved_one": {
+    "message": "Saved $count$ rule.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsSaved_few": {
+    "message": "Saved $count$ rules.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsSaved_many": {
+    "message": "Saved $count$ rules.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsSaved_other": {
+    "message": "Saved $count$ rules.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsCleared": {
+    "message": "All exceptions removed.",
+    "description": "Confirmation after saving an empty field of Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsUnused": {
+    "message": "No keyword matches: $phrases$ – these rules change nothing.",
+    "description": "Note after saving Exceptions to keywords in “Advanced”: rule phrases that no keyword on the list can match.",
+    "placeholders": {
+      "phrases": {
+        "content": "$1",
+        "example": "kradzież, pożar"
+      }
+    }
+  },
+  "exceptionsSaveFailed": {
+    "message": "The exceptions could not be saved.",
+    "description": "Error: Exceptions to keywords in “Advanced” could not be stored."
+  },
+  "exceptionsError_separator": {
+    "message": "Line $line$: no “|” between the phrase and the contexts. Nothing was saved.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "exceptionsError_phrase": {
+    "message": "Line $line$: the phrase before “|” must have $min$ to $max$ characters. Nothing was saved.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      },
+      "min": {
+        "content": "$2",
+        "example": "3"
+      },
+      "max": {
+        "content": "$3",
+        "example": "80"
+      }
+    }
+  },
+  "exceptionsError_contexts": {
+    "message": "Line $line$: give at least one context after “|”. Nothing was saved.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "exceptionsError_contextLength": {
+    "message": "Line $line$: every context must have $min$ to $max$ characters. Nothing was saved.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      },
+      "min": {
+        "content": "$2",
+        "example": "3"
+      },
+      "max": {
+        "content": "$3",
+        "example": "80"
+      }
+    }
   }
 }

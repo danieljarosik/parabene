@@ -58,6 +58,17 @@
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  /** No letter, digit or underscore right before: a phrase matches at the start of a word. */
+  const WORD_START = '(?<![\\p{L}\\p{N}_])';
+
+  /** Normalised phrases → one alternation (longest first), whitespace in a phrase matching any run of it. */
+  function phrasesPattern(phrases) {
+    return [...phrases]
+      .sort((a, b) => b.length - a.length)
+      .map((phrase) => escapeRegExp(phrase).replace(/ /g, '\\s+'))
+      .join('|');
+  }
+
   function normalize(value) {
     return String(value == null ? '' : value)
       .normalize('NFC')
@@ -70,13 +81,18 @@
    * Fast local keyword matching.
    * - case-insensitive, with full Unicode support for diacritics (`u` flag),
    * - a phrase must start at a word boundary (no letter/digit right before it),
-   * - the end of a phrase is open, so a stem also matches inflected forms.
+   * - the end of a phrase is open, so a stem also matches inflected forms,
+   * - an exception ({ phrase, contexts }) skips the occurrences of keywords that start with its
+   *   phrase when the text contains one of its contexts; the text is still hidden by any other
+   *   occurrence.
    */
   class KeywordEvaluator extends ContentEvaluator {
     /**
      * @param {string[]} keywords
-     * @param {{categories?: Map<string,string>|Object<string,string>}} [options]
-     *        phrase → category id; a match on such a phrase reports the category
+     * @param {{categories?: Map<string,string>|Object<string,string>,
+     *          exceptions?: Array<{phrase: string, contexts: string[]}>}} [options]
+     *        categories: phrase → category id; a match on such a phrase reports the category.
+     *        exceptions: sanitised rules (ParaBeneConfig.sanitizeExceptions).
      */
     constructor(keywords, options = {}) {
       super();
@@ -93,13 +109,19 @@
         if (categories.has(keyword)) this.categories.set(keyword, categories.get(keyword));
       }
 
-      const alternatives = [...unique]
-        .sort((a, b) => b.length - a.length)
-        .map((keyword) => escapeRegExp(keyword).replace(/ /g, '\\s+'));
+      this.regex = unique.size ? new RegExp(`${WORD_START}(${phrasesPattern(unique)})`, 'giu') : null;
 
-      this.regex = alternatives.length
-        ? new RegExp(`(?<![\\p{L}\\p{N}_])(${alternatives.join('|')})`, 'iu')
-        : null;
+      // phrase: sticky, tried at the position of a keyword's occurrence; context: anywhere in the text.
+      this.exceptions = [];
+      for (const rule of options.exceptions || []) {
+        const phrase = normalize(rule && rule.phrase);
+        const contexts = ((rule && rule.contexts) || []).map(normalize).filter(Boolean);
+        if (!phrase || contexts.length === 0) continue;
+        this.exceptions.push({
+          phrase: new RegExp(`${WORD_START}${phrasesPattern([phrase])}`, 'iuy'),
+          context: new RegExp(`${WORD_START}(?:${phrasesPattern(contexts)})`, 'iu'),
+        });
+      }
     }
 
     async evaluate(text) {
@@ -108,10 +130,26 @@
 
     evaluateSync(text) {
       if (!this.regex || !text) return makeResult(false, '', 'keyword');
-      const match = this.regex.exec(String(text).normalize('NFC'));
-      if (!match) return makeResult(false, '', 'keyword');
-      const matched = normalize(match[1]);
-      return makeResult(true, matched, 'keyword', this.categories.get(matched));
+      const source = String(text).normalize('NFC');
+      const active = this.exceptions.filter((rule) => rule.context.test(source));
+      const regex = this.regex;
+      regex.lastIndex = 0;
+      let match;
+      while ((match = regex.exec(source))) {
+        const at = match.index;
+        const excepted = active.some((rule) => {
+          rule.phrase.lastIndex = at;
+          return rule.phrase.test(source);
+        });
+        if (!excepted) {
+          const matched = normalize(match[1]);
+          return makeResult(true, matched, 'keyword', this.categories.get(matched));
+        }
+        // From the next character (a whole code point: with the `u` flag an index inside a surrogate
+        // pair finds the same match again): a shorter keyword may start inside the skipped occurrence.
+        regex.lastIndex = at + (source.codePointAt(at) > 0xffff ? 2 : 1);
+      }
+      return makeResult(false, '', 'keyword');
     }
   }
 
@@ -462,12 +500,16 @@
 
   /**
    * Builds an evaluator from the settings stored in chrome.storage.local.
-   * @param {{keywords: string[], aiEnabled: boolean, aiEndpoint: string, aiMode?: string}} settings
+   * @param {{keywords: string[], keywordExceptions?: Array<{phrase: string, contexts: string[]}>,
+   *          aiEnabled: boolean, aiEndpoint: string, aiMode?: string}} settings
    *        aiMode "both" (default): keywords first, then the model; "ai": the model alone,
    *        keywords only as a fallback while it is unavailable.
    */
   function createEvaluator(settings, options = {}) {
-    const keyword = new KeywordEvaluator(settings.keywords, { categories: options.categories });
+    const keyword = new KeywordEvaluator(settings.keywords, {
+      categories: options.categories,
+      exceptions: settings.keywordExceptions,
+    });
     if (!settings.aiEnabled) return keyword;
     const ai = new LocalAIEvaluator({
       endpoint: settings.aiEndpoint,

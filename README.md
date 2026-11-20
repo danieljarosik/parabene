@@ -55,7 +55,7 @@ Click the ParaBene icon to open the panel. Labels below are given in English, wi
 | **Learning** (*Samouczenie*) | Off by default. **Learn from revealed content** (*Ucz się z odkrytych treści*): content you reveal and do not hide again becomes an example, and similar content hidden for the same reason is let through under a **Hide** (*Ukryj*) bar. **How similar content to let through** (*Jak podobne treści przepuszczać*) sets the similarity; the list of learned examples lets you forget them one by one or all at once. See [Learning from revealed content](#learning-from-revealed-content). |
 | **Log of evaluations and statistics** (*Dziennik ocen i statystyki*) | Off by default. When on, every evaluated text is recorded locally, hidden or shown, with its page address and verdict (keywords, AI text model or AI image model). **Open statistics** (*Otwórz statystyki*) opens a page in a tab with the numbers, the sites and the entries, where verdicts can be corrected and the log downloaded or cleared. See [Statistics and the log of evaluations](#statistics-and-the-log-of-evaluations). |
 | **Backup** (*Kopia zapasowa*) | **Export settings** (*Eksportuj ustawienia*) saves every setting, the phrases, the excluded sites and the learned examples to one file; **Import settings…** (*Importuj ustawienia…*) restores it after a summary and warnings. See [Backup and keyword files](#backup-and-keyword-files). |
-| **Advanced** (*Zaawansowane*) | Collapsed by default, at the bottom of the panel. **Section order** (*Kolejność sekcji*) lists the cards from **Excluded sites** to **Backup**; the ↑ / ↓ buttons move a card up or down (the counter at the top and **Advanced** itself stay where they are). **Restore the default order and expand the sections** (*Przywróć domyślną kolejność i rozwiń sekcje*) brings back the default order and expands every card in that list; **Advanced** itself stays open. See [Panel layout](#panel-layout). **Another basal version** (*Inna wersja basala*) tries a basal model file other than the built-in ones, at your own risk: see [Another basal version](#another-basal-version-advanced). |
+| **Advanced** (*Zaawansowane*) | Collapsed by default, at the bottom of the panel. **Section order** (*Kolejność sekcji*) lists the cards from **Excluded sites** to **Backup**; the ↑ / ↓ buttons move a card up or down (the counter at the top and **Advanced** itself stay where they are). **Restore the default order and expand the sections** (*Przywróć domyślną kolejność i rozwiń sekcje*) brings back the default order and expands every card in that list; **Advanced** itself stays open. See [Panel layout](#panel-layout). **Exceptions to keywords** (*Wyjątki od słów kluczowych*) keep a keyword from hiding texts on a given topic, e.g. `kradzież` in articles about a cyberattack: see [Exceptions to keywords](#exceptions-to-keywords-advanced). **Another basal version** (*Inna wersja basala*) tries a basal model file other than the built-in ones, at your own risk: see [Another basal version](#another-basal-version-advanced). |
 | Language picker (footer, 🌐) | Switches the interface language (*Polski* / *English*). It applies at once to the panel and to the placeholder bars in open tabs, without reloading them. |
 
 Profanity on the panel's keyword list is blurred and revealed on mouse hover. The placeholder bar shows the category *profanity* („wulgaryzm”) instead of the word itself.
@@ -81,6 +81,39 @@ the stored layout and says so.
 - Short phrases (min. 3 characters) catch a lot — the shorter the stem, the higher the risk of false positives.
 
 On first run, a default list of Polish phrases is loaded (accidents, death, violence, disasters, basic profanity). You can edit it freely.
+
+### Exceptions to keywords (Advanced)
+
+Some phrases should hide ordinary texts but not texts on a particular topic — e.g. `kradzież`
+(*theft*) hides news about a stolen bike, yet articles about a cyberattack and stolen card data
+should stay. **Advanced → Exceptions to keywords** (*Zaawansowane → Wyjątki od słów kluczowych*)
+takes one rule per line, the phrase and its contexts separated by `|`, the contexts by commas:
+
+```
+kradzież | cyberatak, haker, wyciek danych, dane kart
+```
+
+- An occurrence of a keyword that **starts with the rule's phrase** (at the same place in the text)
+  does not count when the text also contains one of the contexts. The phrase may be the keyword
+  itself, a longer form of it (keyword `kradzie`, rule `kradzież`) or a shorter one.
+- Only that occurrence is skipped: any other keyword in the text still hides it
+  („Cyberatak i kradzież… zginął pracownik” is hidden for `zginął`).
+- Contexts are matched like keywords — at the start of a word, with an open end, case-insensitive —
+  and anywhere in the evaluated text (the container's own text). Enter stems: `cyberatak` also covers
+  „cyberataku”, but `wyciek danych` does not cover „wycieku danych” (`wyciek` would).
+- Exceptions concern keywords only. With **Keywords and AI model** (*Frazy i model AI*) set to both,
+  a text no keyword hides goes on to the model, which may still hide it under its **Hidden topics**.
+- Lines starting with `#` are skipped; a phrase that itself starts with `#` (or `\`) is written with
+  a `\` in front, as in a keywords file. A phrase cannot contain `|`, nor a context `,`, `;` or `|`.
+  **Save exceptions** (*Zapisz wyjątki*) or Ctrl+Enter saves the
+  list; a line that is not a valid rule is selected and nothing is saved. After saving, the panel
+  lists rule phrases that no keyword can match (such a rule changes nothing). Open pages are judged
+  again at once.
+
+The rules are stored as `keywordExceptions`, `[{ "phrase": "kradzież", "contexts": ["cyberatak", …] }]`,
+normalised like keywords (rules for the same phrase are merged), and are part of the
+[settings backup](#full-settings-backups). On import, invalid rules are skipped and reported; when none
+of a non-empty list is valid, the current rules stay.
 
 ---
 
@@ -657,7 +690,7 @@ The page follows new evaluations while it is open, and the UI language.
 **Download file (.jsonl)** (*Pobierz plik*) on the statistics page saves `parabene-log-YYYYMMDD-HHMM.jsonl` ([JSON Lines](https://jsonlines.org/)): a header line with the version and the settings at export time, then one evaluation per line, oldest first. **Clear log** (*Wyczyść dziennik*, click twice) deletes all entries, corrected ones included.
 
 ```json
-{"type":"meta","extension":"ParaBene","version":"1.0.0","exportedAt":"2026-11-17T20:49:00.000Z","entries":3,"settings":{"aiEnabled":true,"aiProtocol":"builtin","aiModel":"basal-2.0-mini-q5","aiMode":"both","aiSensitivity":"medium","aiThreshold":0.5,"aiTopics":["accident","violence","death","profanity"],"keywords":["wypadek","..."]}}
+{"type":"meta","extension":"ParaBene","version":"1.0.0","exportedAt":"2026-11-17T20:49:00.000Z","entries":3,"settings":{"aiEnabled":true,"aiProtocol":"builtin","aiModel":"basal-2.0-mini-q5","aiMode":"both","aiSensitivity":"medium","aiThreshold":0.5,"aiTopics":["accident","violence","death","profanity"],"keywords":["wypadek","..."],"keywordExceptions":[]}}
 {"type":"hidden","count":1,"time":"2026-11-17T20:48:41.120Z","lastTime":"2026-11-17T20:48:41.120Z","url":"https://www.example.pl/","host":"example.pl","source":"keyword","mode":"both","reason":"wypadek","category":"","fallback":false,"revealed":false,"learned":false,"text":"Wypadek na S6 koło Żukowa..."}
 {"type":"hidden","count":2,"time":"2026-11-17T20:48:42.305Z","lastTime":"2026-11-17T20:48:54.600Z","url":"https://www.example.pl/","host":"example.pl","source":"ai","mode":"both","reason":"","category":"violence","fallback":false,"revealed":true,"learned":false,"text":"...","details":{"score":0.76,"threshold":0.5,"probabilities":{"accident":0.04,"violence":0.68,"death":0.03,"profanity":0.01,"none":0.24},"model":"basal-2.0-mini (Q5_K_M)"},"label":"show","labelTime":"2026-11-17T20:49:10.000Z"}
 {"type":"shown","count":1,"time":"2026-11-17T20:48:43.010Z","lastTime":"2026-11-17T20:48:43.010Z","url":"https://www.example.pl/","host":"example.pl","source":"ai","mode":"both","reason":"","category":"","fallback":false,"revealed":false,"learned":false,"text":"Nowa ścieżka rowerowa...","details":{"score":0.05,"threshold":0.5,"probabilities":{"accident":0.02,"violence":0.01,"death":0.01,"profanity":0.01,"none":0.95},"model":"basal-2.0-mini (Q5_K_M)"}}
@@ -736,7 +769,7 @@ model's file are not part of it.
   "extension": "ParaBene",
   "extensionVersion": "1.0.0",
   "exportedAt": "2026-11-17T13:30:00.000Z",
-  "settings": { "enabled": true, "keywords": ["wypadek", "..."], "excludedSites": ["example.com"], "aiEnabled": false, "...": "..." },
+  "settings": { "enabled": true, "keywords": ["wypadek", "..."], "keywordExceptions": [], "excludedSites": ["example.com"], "aiEnabled": false, "...": "..." },
   "learned": [{ "id": "…", "time": "…", "source": "keyword", "reason": "wypadek", "text": "…" }]
 }
 ```

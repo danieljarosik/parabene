@@ -421,6 +421,15 @@ body {
   border-color: var(--error);
 }
 
+.exceptions__input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
 .btn {
   flex: 0 0 auto;
   padding: 7px 12px;

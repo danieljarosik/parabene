@@ -259,7 +259,7 @@
    *   meta:      { formatVersion, extensionVersion, exportedAt },
    *   warnings:  [{ code, items?, count?, version? }] — what the user should be told:
    *              newerFormat, olderFormat, unknownKeys, invalidValues, missingKeys, keywordsSkipped,
-   *              sitesSkipped
+   *              sitesSkipped, exceptionsSkipped
    * }.
    * Throws BackupError: invalidJson, notParabene, keywordsFile, sitesFile, unsupportedVersion.
    */
@@ -312,6 +312,20 @@
         }
         settings.excludedSites = sites;
         if (skipped) warnings.push({ code: 'sitesSkipped', count: skipped });
+      } else if (key === 'keywordExceptions') {
+        // As with sites: bad rules are skipped and reported; with no valid rule in a non-empty list
+        // the current rules stay rather than being cleared.
+        if (!Array.isArray(value)) {
+          invalid.push(key);
+          continue;
+        }
+        const { rules, skipped } = Config.cleanExceptions(value);
+        if (rules.length === 0 && skipped > 0) {
+          invalid.push(key);
+          continue;
+        }
+        settings.keywordExceptions = rules;
+        if (skipped) warnings.push({ code: 'exceptionsSkipped', count: skipped });
       } else {
         const clean = Config.validateSetting(key, value);
         if (clean === undefined) invalid.push(key);

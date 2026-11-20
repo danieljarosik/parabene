@@ -428,6 +428,7 @@
         aiTopics: settings.aiTopics,
         aiImagesEnabled: settings.aiImagesEnabled,
         keywords: settings.keywords,
+        keywordExceptions: settings.keywordExceptions,
       },
     };
     const lines = records.map((record) => {

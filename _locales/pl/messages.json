@@ -2879,6 +2879,16 @@
       }
     }
   },
+  "importWarn_exceptionsSkipped": {
+    "message": "Pominięto nieprawidłowe wyjątki od słów kluczowych: $count$.",
+    "description": "Import warning: some exceptions to keywords in the backup were rejected.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
   "importWarn_sitesSkipped": {
     "message": "Pominięto nieprawidłowe witryny: $count$.",
     "description": "Import warning: some excluded sites in the backup were rejected.",
@@ -2994,5 +3004,139 @@
   },
   "importError_sitesFile": {
     "message": "To lista wykluczonych witryn. Zaimportuj ją w sekcji „Wykluczone witryny”."
+  },
+  "exceptionsTitle": {
+    "message": "Wyjątki od słów kluczowych",
+    "description": "Subheading in Advanced: Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsHint": {
+    "message": "Słowo kluczowe nie ukryje tekstu, jeśli ten sam tekst zawiera któryś z podanych kontekstów. Inne słowa kluczowe nadal go ukrywają. Wyjątki dotyczą tylko słów kluczowych, nie oceny modelu AI.",
+    "description": "Explanation under the heading of Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsPlaceholder": {
+    "message": "kradzież | cyberatak, haker, wyciek danych",
+    "description": "Placeholder of the field of Exceptions to keywords in “Advanced”: an example rule (Polish phrases, as the default keyword list is Polish)."
+  },
+  "exceptionsFormat": {
+    "message": "Jedna reguła w wierszu: fraza | konteksty oddzielone przecinkami. Jak przy słowach kluczowych liczy się początek słowa, więc wpisuj rdzenie: „cyberatak” obejmie też „cyberataku”. Wiersze zaczynające się od # są pomijane. Ctrl+Enter zapisuje.",
+    "description": "Format of the field of Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsSave": {
+    "message": "Zapisz wyjątki",
+    "description": "Button saving Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsSaved_one": {
+    "message": "Zapisano $count$ regułę.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: one).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsSaved_few": {
+    "message": "Zapisano $count$ reguły.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: few).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsSaved_many": {
+    "message": "Zapisano $count$ reguł.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: many).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsSaved_other": {
+    "message": "Zapisano $count$ reguły.",
+    "description": "Confirmation after saving Exceptions to keywords in “Advanced” (plural form: other).",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "exceptionsCleared": {
+    "message": "Usunięto wszystkie wyjątki.",
+    "description": "Confirmation after saving an empty field of Exceptions to keywords in “Advanced”."
+  },
+  "exceptionsUnused": {
+    "message": "Żadne słowo kluczowe nie pasuje do: $phrases$ – te reguły niczego nie zmienią.",
+    "description": "Note after saving Exceptions to keywords in “Advanced”: rule phrases that no keyword on the list can match.",
+    "placeholders": {
+      "phrases": {
+        "content": "$1",
+        "example": "kradzież, pożar"
+      }
+    }
+  },
+  "exceptionsSaveFailed": {
+    "message": "Nie udało się zapisać wyjątków.",
+    "description": "Error: Exceptions to keywords in “Advanced” could not be stored."
+  },
+  "exceptionsError_separator": {
+    "message": "Wiersz $line$: brak znaku „|” między frazą a kontekstami. Nic nie zapisano.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "exceptionsError_phrase": {
+    "message": "Wiersz $line$: fraza przed „|” musi mieć od $min$ do $max$ znaków. Nic nie zapisano.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      },
+      "min": {
+        "content": "$2",
+        "example": "3"
+      },
+      "max": {
+        "content": "$3",
+        "example": "80"
+      }
+    }
+  },
+  "exceptionsError_contexts": {
+    "message": "Wiersz $line$: po „|” podaj co najmniej jeden kontekst. Nic nie zapisano.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "exceptionsError_contextLength": {
+    "message": "Wiersz $line$: każdy kontekst musi mieć od $min$ do $max$ znaków. Nic nie zapisano.",
+    "description": "Validation error in Exceptions to keywords in “Advanced”.",
+    "placeholders": {
+      "line": {
+        "content": "$1",
+        "example": "3"
+      },
+      "min": {
+        "content": "$2",
+        "example": "3"
+      },
+      "max": {
+        "content": "$3",
+        "example": "80"
+      }
+    }
   }
 }

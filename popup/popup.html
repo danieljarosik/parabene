@@ -327,6 +327,25 @@
           </div>
           <p class="hint layout__status" id="layout-status" role="status"></p>
 
+          <!-- Exceptions to keywords (src/config.js, "Exceptions to keywords"). -->
+          <h3 class="subhead subhead--section" id="exceptions-title" data-i18n="exceptionsTitle"></h3>
+          <p class="hint hint--lead" id="exceptions-hint" data-i18n="exceptionsHint"></p>
+          <textarea
+            id="exceptions-input"
+            class="input input--mono exceptions__input"
+            rows="4"
+            spellcheck="false"
+            autocomplete="off"
+            aria-labelledby="exceptions-title"
+            aria-describedby="exceptions-hint exceptions-status"
+            data-i18n-placeholder="exceptionsPlaceholder"
+          ></textarea>
+          <p class="hint" data-i18n="exceptionsFormat"></p>
+          <div class="card__actions">
+            <button type="button" class="btn btn--primary" id="exceptions-save" data-i18n="exceptionsSave"></button>
+          </div>
+          <p class="hint" id="exceptions-status" role="status"></p>
+
           <!-- Another basal version for the built-in model (src/config.js, "Another basal version"). -->
           <h3 class="subhead subhead--section" id="custom-model-title" data-i18n="customModelTitle"></h3>
           <p class="hint hint--lead hint--warning" data-i18n="customModelWarning"></p>

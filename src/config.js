@@ -335,6 +335,7 @@
   const DEFAULT_SETTINGS = Object.freeze({
     enabled: true,
     keywords: DEFAULT_KEYWORDS,
+    keywordExceptions: Object.freeze([]),
     excludedSites: Object.freeze([]),
     aiEnabled: false,
     aiEndpoint: DEFAULT_ENDPOINT,
@@ -434,6 +435,110 @@
       out.push(keyword);
     }
     return out;
+  }
+
+  function isValidPhrase(phrase) {
+    return phrase.length >= KEYWORD_MIN_LENGTH && phrase.length <= KEYWORD_MAX_LENGTH;
+  }
+
+  /*
+   * Exceptions to keywords ("Advanced" in the panel): [{ phrase, contexts: [...] }]. An occurrence
+   * of a keyword that starts with `phrase` does not hide the text when the text also contains one
+   * of the `contexts` (matched like keywords: at the start of a word, open end). Other keywords in
+   * the same text still hide it. Example: "kradzież" with the contexts "cyberatak", "wyciek danych".
+   */
+
+  /** Separates the phrase from its contexts in the panel's text form of a rule. */
+  const EXCEPTION_SEPARATOR = '|';
+
+  /**
+   * A phrase or a context the panel's text form can hold: of a keyword's length, without the
+   * separator, and a context also without the commas and semicolons that separate contexts.
+   * (A phrase starting with "#" or "\" is written with a "\" in front, see formatExceptions.)
+   */
+  function isExceptionPhrase(phrase) {
+    return isValidPhrase(phrase) && !phrase.includes(EXCEPTION_SEPARATOR);
+  }
+
+  function isExceptionContext(context) {
+    return isValidPhrase(context) && !/[,;|]/.test(context);
+  }
+
+  /** One rule cleaned, or null when its phrase or contexts are not valid (one bad context is enough). */
+  function cleanExceptionRule(rule) {
+    if (!rule || typeof rule !== 'object' || typeof rule.phrase !== 'string' || !Array.isArray(rule.contexts)) return null;
+    if (!rule.contexts.every((item) => typeof item === 'string')) return null;
+    const phrase = normalizeKeyword(rule.phrase);
+    const contexts = uniqueKeywords(rule.contexts);
+    if (!isExceptionPhrase(phrase) || contexts.length === 0 || !contexts.every(isExceptionContext)) return null;
+    return { phrase, contexts };
+  }
+
+  /**
+   * Clean rules → { rules, skipped }: phrases and contexts normalised like keywords, invalid rules
+   * (no contexts, a phrase or a context of the wrong length or with a separator) dropped and counted,
+   * rules for the same phrase merged (in their first place).
+   */
+  function cleanExceptions(list) {
+    if (!Array.isArray(list)) return { rules: [], skipped: 0 };
+    const byPhrase = new Map();
+    let skipped = 0;
+    for (const item of list) {
+      const rule = cleanExceptionRule(item);
+      if (!rule) {
+        skipped += 1;
+        continue;
+      }
+      const merged = byPhrase.get(rule.phrase) || [];
+      for (const context of rule.contexts) if (!merged.includes(context)) merged.push(context);
+      byPhrase.set(rule.phrase, merged);
+    }
+    return { rules: [...byPhrase].map(([phrase, contexts]) => ({ phrase, contexts })), skipped };
+  }
+
+  function sanitizeExceptions(list) {
+    return cleanExceptions(list).rules;
+  }
+
+  /**
+   * Rules → the panel's text: one rule per line, "phrase | context, context". A phrase starting with
+   * "#" (a comment otherwise) or "\" (the escape itself) gets a "\" in front, as in a keywords file.
+   */
+  function formatExceptions(rules) {
+    return sanitizeExceptions(rules)
+      .map((rule) => {
+        const phrase = /^[#\\]/.test(rule.phrase) ? `\\${rule.phrase}` : rule.phrase;
+        return `${phrase} ${EXCEPTION_SEPARATOR} ${rule.contexts.join(', ')}`;
+      })
+      .join('\n');
+  }
+
+  /**
+   * The panel's text → { rules, errors }. Empty lines and lines starting with "#" are skipped;
+   * a "\" in front of a phrase is dropped (see formatExceptions); contexts are separated by commas
+   * or semicolons. `errors`: [{ line (1-based), code }] with code "separator" (no "|"), "phrase"
+   * (the phrase is empty or of the wrong length), "contexts" (no context) or "contextLength"
+   * (a context of the wrong length).
+   */
+  function parseExceptions(text) {
+    const rules = [];
+    const errors = [];
+    String(text == null ? '' : text).split(/\r?\n/).forEach((raw, index) => {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) return;
+      const at = line.indexOf(EXCEPTION_SEPARATOR);
+      if (at < 0) {
+        errors.push({ line: index + 1, code: 'separator' });
+        return;
+      }
+      const phrase = normalizeKeyword(line.slice(0, at).replace(/^\\/, ''));
+      const contexts = line.slice(at + 1).split(/[,;|]+/).map(normalizeKeyword).filter(Boolean);
+      if (!isExceptionPhrase(phrase)) errors.push({ line: index + 1, code: 'phrase' });
+      else if (contexts.length === 0) errors.push({ line: index + 1, code: 'contexts' });
+      else if (!contexts.every(isExceptionContext)) errors.push({ line: index + 1, code: 'contextLength' });
+      else rules.push({ phrase, contexts });
+    });
+    return { rules: sanitizeExceptions(rules), errors };
   }
 
   /** Keeps the hostname of an HTTP(S) address or a bare host, normalised by the URL parser. */
@@ -614,6 +719,12 @@
     switch (key) {
       case 'keywords':
         return Array.isArray(value) && value.every((item) => typeof item === 'string') ? uniqueKeywords(value) : undefined;
+      // All rules or nothing (src/backup.js reads this list rule by rule, see cleanExceptions).
+      case 'keywordExceptions': {
+        if (!Array.isArray(value)) return undefined;
+        const { rules, skipped } = cleanExceptions(value);
+        return skipped ? undefined : rules;
+      }
       case 'excludedSites': {
         if (!Array.isArray(value)) return undefined;
         const sites = value.map(normalizeSite);
@@ -654,6 +765,7 @@
     return {
       enabled: s.enabled !== false,
       keywords: uniqueKeywords(Array.isArray(s.keywords) ? s.keywords : DEFAULT_KEYWORDS),
+      keywordExceptions: sanitizeExceptions(s.keywordExceptions),
       excludedSites: Array.isArray(s.excludedSites) ? [...new Set(s.excludedSites.map(normalizeSite).filter(Boolean))] : [],
       aiEnabled: s.aiEnabled === true,
       aiEndpoint: endpoint || DEFAULT_ENDPOINT,
@@ -779,6 +891,11 @@
     KEYWORD_MAX_LENGTH,
     normalizeKeyword,
     uniqueKeywords,
+    EXCEPTION_SEPARATOR,
+    cleanExceptions,
+    sanitizeExceptions,
+    formatExceptions,
+    parseExceptions,
     isValidEndpoint,
     isSupportedProtocol,
     isSupportedMode,

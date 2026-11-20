@@ -97,6 +97,9 @@
     layoutReset: document.getElementById('layout-reset'),
     layoutStatus: document.getElementById('layout-status'),
     layoutError: document.getElementById('layout-error'),
+    exceptionsInput: document.getElementById('exceptions-input'),
+    exceptionsSave: document.getElementById('exceptions-save'),
+    exceptionsStatus: document.getElementById('exceptions-status'),
     customUrl: document.getElementById('custom-model-url'),
     customCheck: document.getElementById('custom-model-check'),
     customInfo: document.getElementById('custom-model-info'),
@@ -130,6 +133,8 @@
   /** Hint element → the timer that puts its standing hint back. */
   const feedbackTimers = new Map();
   let recentlyAdded = new Set();
+  /** The exceptions field holds unsaved text: a change of the settings does not overwrite it. */
+  let exceptionsDirty = false;
   let stats = null;
   /** The card of the log of evaluated content (popup/log-card.js). */
   let logCard = null;
@@ -182,7 +187,7 @@
 
     i18n = I18n.createTranslator(locale, messages, fallback);
     collator = new Intl.Collator(locale, { sensitivity: 'base' });
-    for (const hint of [els.keywordFeedback, els.siteFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus, els.layoutStatus]) {
+    for (const hint of [els.keywordFeedback, els.siteFeedback, els.aiStatus, els.aiImagesStatus, els.backupStatus, els.importStatus, els.layoutStatus, els.exceptionsStatus]) {
       clearTimeout(feedbackTimers.get(hint));
       feedbackTimers.delete(hint);
       hint.classList.remove('hint--ok', 'hint--error');
@@ -191,6 +196,7 @@
     els.backupStatus.textContent = '';
     els.importStatus.textContent = '';
     els.layoutStatus.textContent = '';
+    els.exceptionsStatus.textContent = '';
     els.layoutError.hidden = true;
     I18n.localize(document, i18n);
     if (importKind) document.title = t('importWindowTitle', t(`importTitle_${importKind}`));
@@ -250,6 +256,7 @@
     renderLanguagePicker();
     renderCustom();
     renderKeywords();
+    renderExceptions();
     renderSites();
     renderStatHint();
     renderStats();
@@ -544,6 +551,64 @@
   async function removeKeyword(keyword) {
     await chrome.storage.local.set({ keywords: settings.keywords.filter((k) => k !== keyword) });
     showFeedback(els.keywordFeedback, t('keywordRemoved', keyword), 'ok', 'keywordHint');
+  }
+
+  /* ---------------- Exceptions to keywords (Advanced) ---------------- */
+
+  function renderExceptions() {
+    if (exceptionsDirty) return;
+    els.exceptionsInput.value = Config.formatExceptions(settings.keywordExceptions);
+    els.exceptionsInput.classList.remove('input--invalid');
+  }
+
+  /** Selects line `number` (1-based) of the field, so the user sees which rule is wrong. */
+  function selectExceptionLine(number) {
+    const lines = els.exceptionsInput.value.split('\n');
+    const start = lines.slice(0, number - 1).reduce((sum, line) => sum + line.length + 1, 0);
+    els.exceptionsInput.focus();
+    els.exceptionsInput.setSelectionRange(start, start + (lines[number - 1] || '').length);
+  }
+
+  /**
+   * Phrases of rules that no keyword can match: neither the phrase starts with a keyword nor
+   * a keyword with the phrase (the occurrences of a keyword are what a rule skips).
+   */
+  function unusedExceptionPhrases(rules) {
+    return rules
+      .map((rule) => rule.phrase)
+      .filter((phrase) => !settings.keywords.some((keyword) => phrase.startsWith(keyword) || keyword.startsWith(phrase)));
+  }
+
+  async function saveExceptions() {
+    const text = els.exceptionsInput.value;
+    const { rules, errors } = Config.parseExceptions(text);
+    if (errors.length) {
+      const [first] = errors;
+      const message = t(`exceptionsError_${first.code}`, [
+        i18n.formatNumber(first.line),
+        String(Config.KEYWORD_MIN_LENGTH),
+        String(Config.KEYWORD_MAX_LENGTH),
+      ]);
+      els.exceptionsInput.classList.add('input--invalid');
+      showFeedback(els.exceptionsStatus, message, 'error');
+      selectExceptionLine(first.line);
+      return;
+    }
+    try {
+      await chrome.storage.local.set({ keywordExceptions: rules });
+    } catch (err) {
+      console.error('[ParaBene]', err);
+      showFeedback(els.exceptionsStatus, t('exceptionsSaveFailed'), 'error');
+      return;
+    }
+    // Text typed while the rules were being saved stays (and unsaved) instead of being replaced.
+    if (els.exceptionsInput.value === text) exceptionsDirty = false;
+    settings = Config.sanitize(Object.assign({}, settings, { keywordExceptions: rules }));
+    renderExceptions();
+    const sentences = [rules.length ? plural('exceptionsSaved', rules.length) : t('exceptionsCleared')];
+    const unused = unusedExceptionPhrases(rules);
+    if (unused.length) sentences.push(t('exceptionsUnused', unused.join(', ')));
+    showFeedback(els.exceptionsStatus, sentences.join(' '), unused.length ? null : 'ok');
   }
 
   async function restoreDefaults() {
@@ -1577,6 +1642,17 @@
       }
     });
     els.customCheck.addEventListener('click', checkCustom);
+    els.exceptionsInput.addEventListener('input', () => {
+      exceptionsDirty = true;
+      els.exceptionsInput.classList.remove('input--invalid');
+    });
+    els.exceptionsInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        saveExceptions();
+      }
+    });
+    els.exceptionsSave.addEventListener('click', saveExceptions);
     els.customConsent.addEventListener('change', renderCustom);
     els.customStart.addEventListener('click', startCustom);
     els.customKeep.addEventListener('click', () => customAction(Config.MSG.CUSTOM_KEEP));
