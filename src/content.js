@@ -21,6 +21,7 @@
   const Learning = globalThis.ParaBeneLearning;
   if (!Config || !I18n || !Evaluators || !Learning || !document.documentElement) return;
 
+  const ATTR_KEEP_LAYOUT = 'data-parabene-keep-layout';
   const ATTR_CHECKED = 'data-parabene-checked';
   const ATTR_CANDIDATE = 'data-parabene-candidate';
   const ATTR_REVEALED = 'data-parabene-revealed';
@@ -43,6 +44,8 @@
   const CLASS_SHOWN = 'parabene-shown';
   const CLASS_BAR = 'parabene-bar';
 
+  const REPEAT_HIDE_MS = 5000;
+  const MAX_RECENT_HIDES = 32;
   const DEBOUNCE_MS = 200;
   const MAX_WAIT_MS = 1000;
   const STATS_DEBOUNCE_MS = 250;
@@ -126,6 +129,7 @@
     firstQueuedAt: 0,
     hidden: emptyCounts(),
     hiddenItems: new WeakMap(),
+    recentFacebookHides: new Map(),
     lastHref: location.href,
     /** Container → the text it was last judged on. */
     texts: new WeakMap(),
@@ -359,7 +363,7 @@
         const previous = hiddenSource(el);
         const byImage = hiddenByImage(el);
         const known = state.hiddenItems.get(el);
-        hide(el, result);
+        hide(el, result, text);
         state.hiddenItems.set(el, { text });
         // Logged once per text: again when hidden for another reason or when the text changed at
         // all (the log and "Show anyway" then refer to the text that was judged last).
@@ -635,7 +639,7 @@
       } else if (verdict) {
         const known = state.hiddenItems.get(el);
         const isNew = !hiddenByImage(el) || !known || known.image !== verdict.image;
-        hide(el, verdict);
+        hide(el, verdict, verdict.image);
         if (isNew) logVerdict(text, verdict);
         state.hiddenItems.set(el, { text, image: verdict.image });
       } else if (passed) {
@@ -876,6 +880,7 @@
     setOrRemoveAttribute(el, ATTR_MEDIA, result.media);
     setOrRemoveAttribute(el, ATTR_SHOWN, kind === 'hidden' ? '' : kind);
     if (learn !== undefined) setOrRemoveAttribute(el, ATTR_LEARN, learn);
+    if (kind !== 'hidden') el.removeAttribute(ATTR_KEEP_LAYOUT);
     layoutRow(el, bar, kind !== 'hidden');
     el.classList.toggle(CLASS_HIDDEN, kind === 'hidden');
     el.classList.toggle(CLASS_SHOWN, kind !== 'hidden');
@@ -886,7 +891,22 @@
     }
   }
 
-  function hide(el, result) {
+  function hide(el, result, content) {
+    // A virtualized feed can rebuild a post when collapsing it changes its geometry.
+    // On a rapid repeat, keep the page's boxes measurable while hiding their contents.
+    if (adapter === facebookAdapter && content && !el.classList.contains(CLASS_HIDDEN)) {
+      const recent = state.recentFacebookHides;
+      const now = performance.now();
+      const last = recent.get(content);
+      const previous = last?.element.deref();
+      if (last && now - last.time < REPEAT_HIDE_MS &&
+          (previous === el || !previous?.isConnected || !previous.classList.contains(CLASS_HIDDEN))) {
+        el.setAttribute(ATTR_KEEP_LAYOUT, getComputedStyle(el).position === 'static' ? 'static' : 'positioned');
+      }
+      recent.delete(content);
+      recent.set(content, { time: now, element: new WeakRef(el) });
+      if (recent.size > MAX_RECENT_HIDES) recent.delete(recent.keys().next().value);
+    }
     mark(el, result, 'hidden', '');
   }
 
@@ -900,6 +920,7 @@
     const bar = directBar(el);
     clearRow(el, bar);
     if (bar) bar.remove();
+    el.removeAttribute(ATTR_KEEP_LAYOUT);
     el.removeAttribute(ATTR_REASON);
     el.removeAttribute(ATTR_SOURCE);
     el.removeAttribute(ATTR_CATEGORY);
@@ -1118,6 +1139,7 @@
 
     const navigated = location.href !== state.lastHref;
     state.lastHref = location.href;
+    if (navigated) state.recentFacebookHides.clear();
     recountHidden(navigated);
 
     const roots = state.fullScanPending
@@ -1196,6 +1218,7 @@
     state.pendingRoots.clear();
     state.removalRoots.clear();
     state.fullScanPending = false;
+    state.recentFacebookHides.clear();
     resetChecks();
     unhideAll();
   }
